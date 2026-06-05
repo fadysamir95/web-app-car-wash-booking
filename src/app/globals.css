@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --background: #f7fbff;
+  --foreground: #102033;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at top left, rgba(21, 155, 255, 0.16), transparent 34rem),
+    linear-gradient(180deg, #f7fbff 0%, #ffffff 48%, #eef7ff 100%);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.glass-panel {
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(119, 168, 211, 0.32);
+  box-shadow: 0 20px 70px rgba(20, 82, 132, 0.12);
+  backdrop-filter: blur(18px);
+}
+
+.field {
+  width: 100%;
+  border: 1px solid #c7dbea;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 0.78rem 0.9rem;
+  color: #102033;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.field:focus {
+  border-color: #0785e8;
+  box-shadow: 0 0 0 4px rgba(7, 133, 232, 0.14);
+  background: #ffffff;
+}
+
+.field:disabled {
+  cursor: not-allowed;
+  background: #edf4fa;
+  color: #71859a;
+}
+
+.label {
+  display: block;
+  margin-bottom: 0.42rem;
+  color: #263f56;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.error-text {
+  margin-top: 0.35rem;
+  color: #b42318;
+  font-size: 0.82rem;
+}

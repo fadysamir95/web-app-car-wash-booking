@@ -1,0 +1,10 @@
+.next/
+node_modules/
+data/bookings.json
+.env*.local
+.npm-cache/
+.tool-config/
+outputs/
+work/
+uploads/
+*.tsbuildinfo
