@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 import { getDirection, languages, translations, type Language, type TranslationKey } from "@/lib/i18n";
 
 type LanguageContextValue = {
@@ -12,17 +12,13 @@ type LanguageContextValue = {
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 const storageKey = "carwash-language";
+const languageChangeEvent = "carwash-language-change";
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<{ language: Language; hasPreference: boolean }>(() => {
-    if (typeof window === "undefined") return { language: "en", hasPreference: false };
-    const saved = window.localStorage.getItem(storageKey) as Language | null;
-    if (saved === "en" || saved === "ar") {
-      return { language: saved, hasPreference: true };
-    }
-    return { language: "en", hasPreference: false };
-  });
-  const { language, hasPreference } = state;
+  const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
+  const savedLanguage = useSyncExternalStore(subscribeToLanguage, getStoredLanguage, () => null);
+  const language = savedLanguage || "en";
+  const hasPreference = savedLanguage !== null;
 
   useEffect(() => {
     document.documentElement.lang = language;
@@ -37,17 +33,36 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
       t: (key) => translations[language][key] || translations.en[key],
       setLanguage: (nextLanguage) => {
         window.localStorage.setItem(storageKey, nextLanguage);
-        setState({ language: nextLanguage, hasPreference: true });
+        window.dispatchEvent(new Event(languageChangeEvent));
       }
     };
   }, [language]);
 
   return (
     <LanguageContext.Provider value={value}>
-      {!hasPreference ? <LanguageSelection onSelect={value.setLanguage} /> : null}
+      {hydrated && !hasPreference ? <LanguageSelection onSelect={value.setLanguage} /> : null}
       {children}
     </LanguageContext.Provider>
   );
+}
+
+function subscribeToHydration(onStoreChange: () => void) {
+  queueMicrotask(onStoreChange);
+  return () => {};
+}
+
+function subscribeToLanguage(onStoreChange: () => void) {
+  window.addEventListener(languageChangeEvent, onStoreChange);
+  window.addEventListener("storage", onStoreChange);
+  return () => {
+    window.removeEventListener(languageChangeEvent, onStoreChange);
+    window.removeEventListener("storage", onStoreChange);
+  };
+}
+
+function getStoredLanguage(): Language | null {
+  const saved = window.localStorage.getItem(storageKey) as Language | null;
+  return saved === "en" || saved === "ar" ? saved : null;
 }
 
 export function useLanguage() {
