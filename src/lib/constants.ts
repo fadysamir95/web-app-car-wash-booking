@@ -46,14 +46,7 @@ export const DEFAULT_SERVICE = SERVICE_CONFIG.services[0];
 export const SERVICE_AREAS = DEFAULT_CITY.areas;
 
 export const PAYMENT_STATUSES = ["Pending", "Verified", "Rejected"] as const;
-export const BOOKING_STATUSES = [
-  "Pending Payment",
-  "Payment Under Review",
-  "Confirmed",
-  "Scheduled",
-  "Completed",
-  "Cancelled"
-] as const;
+export const BOOKING_STATUSES = ["Pending", "Confirmed", "Completed", "Cancelled"] as const;
 
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];

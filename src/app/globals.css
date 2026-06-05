@@ -87,6 +87,11 @@ select {
   background: #ffffff;
 }
 
+.field-error {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.14);
+}
+
 .field:disabled {
   cursor: not-allowed;
   background: #edf4fa;

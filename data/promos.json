@@ -1,0 +1,10 @@
+[
+  {
+    "code": "free-wash",
+    "label": "Free Wash",
+    "discountEgp": 25,
+    "type": "free_wash",
+    "active": true,
+    "expiresAt": "2026-06-30T23:59:59.999Z"
+  }
+]

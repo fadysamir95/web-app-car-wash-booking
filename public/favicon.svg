@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="8" x2="56" y1="6" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0ea5e9"/>
+      <stop offset="1" stop-color="#0369a1"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="18" x2="46" y1="22" y2="42" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#dff7ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <path d="M18 34h28l-4-10H22l-4 10Z" fill="url(#shine)"/>
+  <path d="M14 35.5c0-2 1.6-3.5 3.5-3.5h29c1.9 0 3.5 1.5 3.5 3.5V43H14v-7.5Z" fill="#f8fafc"/>
+  <path d="M21.5 24h21l-1.8-4.4A4 4 0 0 0 37 17H27a4 4 0 0 0-3.7 2.6L21.5 24Z" fill="#bae6fd"/>
+  <circle cx="22" cy="43" r="5" fill="#0f172a"/>
+  <circle cx="42" cy="43" r="5" fill="#0f172a"/>
+  <circle cx="22" cy="43" r="2" fill="#e0f2fe"/>
+  <circle cx="42" cy="43" r="2" fill="#e0f2fe"/>
+  <path d="M49 13c2.5 3.2 2.5 6.3 0 9.5-2.5-3.2-2.5-6.3 0-9.5Z" fill="#e0f2fe"/>
+  <path d="M12 18c3.4 0 6.3-1.8 7.8-4.6C21.2 16.2 24 18 27.5 18 24 18 21.2 19.8 19.8 22.6 18.3 19.8 15.4 18 12 18Z" fill="#ffffff" opacity=".9"/>
+</svg>

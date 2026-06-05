@@ -27,8 +27,8 @@ export function getUpcomingDateValues(days = 14) {
   });
 }
 
-export function formatDisplayDate(value: string) {
-  return new Intl.DateTimeFormat("en-EG", {
+export function formatDisplayDate(value: string, language: "en" | "ar" = "en") {
+  return new Intl.DateTimeFormat(language === "ar" ? "ar-EG" : "en-EG", {
     weekday: "short",
     day: "numeric",
     month: "short",

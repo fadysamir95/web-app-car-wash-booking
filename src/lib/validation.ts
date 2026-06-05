@@ -2,14 +2,12 @@ import {
   BOOKING_STATUSES,
   DEFAULT_CITY,
   DEFAULT_GOVERNORATE,
-  PAYMENT_STATUSES,
   PROMO_CODES,
   SERVICE_AREAS,
   type BookingStatus,
-  type PaymentStatus
 } from "./constants";
 import { isBookingDateAllowed } from "./date";
-import type { BookingInput } from "./types";
+import type { BookingInput, PromoCode } from "./types";
 
 export type ValidationResult<T> =
   | { ok: true; data: T }
@@ -29,7 +27,7 @@ export function normalizePhone(value: string) {
   return digits;
 }
 
-export function validateBookingInput(raw: unknown): ValidationResult<BookingInput> {
+export function validateBookingInput(raw: unknown, promoCodes: readonly PromoCode[] = PROMO_CODES.map((promo) => ({ ...promo, active: true }))): ValidationResult<BookingInput> {
   const source = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
   const errors: Record<string, string> = {};
   const customerName = normalizeString(source.customerName);
@@ -59,7 +57,7 @@ export function validateBookingInput(raw: unknown): ValidationResult<BookingInpu
   if (!SERVICE_AREAS.some((item) => item.id === area)) errors.area = "Choose one of the supported areas.";
   if (address.length < 6 && carLocation.length < 5) errors.location = "Enter a detailed address or share the car location.";
   if (!isBookingDateAllowed(bookingDate)) errors.bookingDate = "The earliest available booking date is tomorrow.";
-  if (promoCode && !PROMO_CODES.some((promo) => promo.code === promoCode)) errors.promoCode = "This promo code is not valid.";
+  if (promoCode && !promoCodes.some((promo) => promo.active && promo.code === promoCode)) errors.promoCode = "This promo code is not valid.";
   if (!consent) errors.consent = "Consent is required to complete the booking.";
   if (!washWindowAcknowledged) errors.washWindowAcknowledged = "You must acknowledge the wash time window.";
   if (honeypot) errors.form = "Unable to submit this booking.";
@@ -95,10 +93,6 @@ export function validateBookingInput(raw: unknown): ValidationResult<BookingInpu
       sourceLanguage
     }
   };
-}
-
-export function isPaymentStatus(value: string): value is PaymentStatus {
-  return PAYMENT_STATUSES.includes(value as PaymentStatus);
 }
 
 export function isBookingStatus(value: string): value is BookingStatus {

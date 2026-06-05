@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
 import { isAdminAuthenticated } from "@/lib/admin";
-import { updateBookingStatus } from "@/lib/store";
-import { isBookingStatus, isPaymentStatus } from "@/lib/validation";
+import { deleteBookingData, updateBookingStatus } from "@/lib/store";
+import { isBookingStatus } from "@/lib/validation";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
 type Updates = {
-  paymentStatus?: "Pending" | "Verified" | "Rejected";
-  bookingStatus?: "Pending Payment" | "Payment Under Review" | "Confirmed" | "Scheduled" | "Completed" | "Cancelled";
+  bookingStatus?: "Pending" | "Confirmed" | "Completed" | "Cancelled";
 };
 
 export async function PATCH(request: Request, context: RouteContext) {
@@ -18,17 +17,9 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   const body = (await request.json().catch(() => null)) as {
-    paymentStatus?: string;
     bookingStatus?: string;
   } | null;
   const updates: Updates = {};
-
-  if (body?.paymentStatus) {
-    if (!isPaymentStatus(body.paymentStatus)) {
-      return NextResponse.json({ error: "Invalid payment status." }, { status: 400 });
-    }
-    updates.paymentStatus = body.paymentStatus;
-  }
 
   if (body?.bookingStatus) {
     if (!isBookingStatus(body.bookingStatus)) {
@@ -45,4 +36,19 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   return NextResponse.json({ booking });
+}
+
+export async function DELETE(_request: Request, context: RouteContext) {
+  if (!(await isAdminAuthenticated())) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  const { id } = await context.params;
+  const bookings = await deleteBookingData(id);
+
+  if (!bookings) {
+    return NextResponse.json({ error: "Booking not found." }, { status: 404 });
+  }
+
+  return NextResponse.json({ bookings });
 }

@@ -1,5 +1,22 @@
 import type { BookingStatus, PaymentStatus, ServiceArea } from "./constants";
 
+export type BookingTimelineEvent = {
+  status: BookingStatus;
+  label: string;
+  createdAt: string;
+  note?: string;
+};
+
+export type PromoCode = {
+  code: string;
+  type: "fixed" | "free_wash";
+  discountEgp: number;
+  label: string;
+  active: boolean;
+  maxUses?: number;
+  expiresAt?: string;
+};
+
 export type Booking = {
   id: string;
   customerId: string;
@@ -21,6 +38,7 @@ export type Booking = {
   bookingTimeWindow: string;
   notes?: string;
   promoCode?: string;
+  finalPriceEgp?: number;
   loyaltyPoints: number;
   marketingConsent: boolean;
   consent: true;
@@ -28,6 +46,9 @@ export type Booking = {
   sourceLanguage: "en" | "ar";
   paymentStatus: PaymentStatus;
   bookingStatus: BookingStatus;
+  expiresAt?: string;
+  cancellationReason?: string;
+  timeline: BookingTimelineEvent[];
   createdAt: string;
 };
 
@@ -38,6 +59,10 @@ export type BookingInput = Omit<
   | "bookingTimeWindow"
   | "paymentStatus"
   | "bookingStatus"
+  | "expiresAt"
+  | "cancellationReason"
+  | "timeline"
+  | "finalPriceEgp"
   | "createdAt"
   | "consent"
   | "washWindowAcknowledged"

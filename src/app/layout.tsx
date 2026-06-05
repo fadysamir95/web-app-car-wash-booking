@@ -7,6 +7,11 @@ export const metadata: Metadata = {
   description:
     "Book an overnight car wash in New October City, Giza. Available from 12 AM to 5 AM.",
   keywords: ["car wash", "booking", "New October City", "Giza", "mobile car wash"],
+  icons: {
+    icon: "/favicon.svg",
+    shortcut: "/favicon.svg",
+    apple: "/favicon.svg"
+  },
   openGraph: {
     title: "Car Wash Booking",
     description: "Book your car wash from 12 AM to 5 AM in supported New October City areas.",
