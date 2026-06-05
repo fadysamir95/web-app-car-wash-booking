@@ -9,7 +9,7 @@ import {
   LocateFixed,
   Upload
 } from "lucide-react";
-import { DEFAULT_CITY, DEFAULT_GOVERNORATE, DEFAULT_SERVICE, SERVICE_AREAS, SERVICE_CONFIG } from "@/lib/constants";
+import { DEFAULT_CITY, DEFAULT_GOVERNORATE, DEFAULT_SERVICE, PROMO_CODES, SERVICE_AREAS, SERVICE_CONFIG } from "@/lib/constants";
 import { formatDisplayDate, getTomorrowDateValue, getUpcomingDateValues } from "@/lib/date";
 import type { Booking, BookingCapacity } from "@/lib/types";
 import { useLanguage } from "./language-provider";
@@ -29,7 +29,6 @@ type FormState = {
   bookingDate: string;
   notes: string;
   promoCode: string;
-  referralCode: string;
   consent: boolean;
   washWindowAcknowledged: boolean;
   website: string;
@@ -50,7 +49,6 @@ const initialState: FormState = {
   bookingDate: getTomorrowDateValue(),
   notes: "",
   promoCode: "",
-  referralCode: "",
   consent: false,
   washWindowAcknowledged: false,
   website: ""
@@ -69,10 +67,7 @@ export function BookingForm() {
   const steps = [
     t("customerInfo"),
     t("carInfo"),
-    t("locationInfo"),
-    t("bookingDate"),
-    t("paymentInstructions"),
-    t("confirmation")
+    t("bookingDate")
   ];
 
   useEffect(() => {
@@ -112,22 +107,19 @@ export function BookingForm() {
     if (targetStep === 0) {
       if (form.customerName.trim().length < 3) nextErrors.customerName = t("requiredName");
       if (!/^(?:\+20|0020|0)?1[0125]\d{8}$/.test(form.phoneNumber.trim())) nextErrors.phoneNumber = t("requiredPhone");
+      if (!form.area) nextErrors.area = t("requiredArea");
+      if (form.address.trim().length < 6 && form.carLocation.trim().length < 5) nextErrors.location = t("requiredLocation");
     }
     if (targetStep === 1) {
       if (form.carBrand.trim().length < 2) nextErrors.carBrand = t("requiredBrand");
       if (!form.carModel.trim()) nextErrors.carModel = t("requiredModel");
       if (form.carColor.trim().length < 2) nextErrors.carColor = t("requiredColor");
+      if (form.promoCode.trim() && !PROMO_CODES.some((promo) => promo.code === form.promoCode.trim().toLowerCase())) nextErrors.promoCode = t("invalidPromo");
+      if (!form.consent) nextErrors.consent = t("requiredConsent");
     }
     if (targetStep === 2) {
-      if (!form.area) nextErrors.area = t("requiredArea");
-      if (form.address.trim().length < 6 && form.carLocation.trim().length < 5) nextErrors.location = t("requiredLocation");
-    }
-    if (targetStep === 3 && !form.bookingDate) nextErrors.bookingDate = t("requiredDate");
-    if (targetStep === 4) {
+      if (!form.bookingDate) nextErrors.bookingDate = t("requiredDate");
       if (!form.washWindowAcknowledged) nextErrors.washWindowAcknowledged = t("requiredAck");
-    }
-    if (targetStep === 5) {
-      if (!form.consent) nextErrors.consent = t("requiredConsent");
     }
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -163,7 +155,7 @@ export function BookingForm() {
   }
 
   function validateAllSteps() {
-    const checks = [0, 1, 2, 3, 4, 5];
+    const checks = [0, 1, 2];
     for (const item of checks) {
       if (!validateStep(item)) {
         setStep(item);
@@ -191,12 +183,9 @@ export function BookingForm() {
     if (!response.ok || !payload.booking) {
       setErrors(payload.errors || { form: t("genericError") });
       const serverErrors = payload.errors || {};
-      if (serverErrors.customerName || serverErrors.phoneNumber) setStep(0);
-      else if (serverErrors.carBrand || serverErrors.carModel || serverErrors.carColor) setStep(1);
-      else if (serverErrors.area || serverErrors.location) setStep(2);
-      else if (serverErrors.bookingDate) setStep(3);
-      else if (serverErrors.washWindowAcknowledged) setStep(4);
-      else setStep(5);
+      if (serverErrors.customerName || serverErrors.phoneNumber || serverErrors.area || serverErrors.location) setStep(0);
+      else if (serverErrors.carBrand || serverErrors.carModel || serverErrors.carColor || serverErrors.promoCode || serverErrors.consent) setStep(1);
+      else setStep(2);
       return;
     }
 
@@ -212,7 +201,7 @@ export function BookingForm() {
         <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">{t("serviceScope")}</p>
       </div>
 
-      <div className="mb-6 grid grid-cols-6 gap-2">
+      <div className="mb-6 grid grid-cols-3 gap-2">
         {steps.map((item, index) => (
           <button key={item} type="button" onClick={() => setStep(index)} className="min-w-0 text-start">
             <div className={`h-2 rounded-full ${index <= step ? "bg-sky-500" : "bg-slate-200 dark:bg-slate-700"}`} />
@@ -239,42 +228,6 @@ export function BookingForm() {
                 required
               />
             </Field>
-          </>
-        ) : null}
-
-        {step === 1 ? (
-          <>
-            <Field label={t("carBrand")} error={errors.carBrand}>
-              <input className="field" list="car-brands" value={form.carBrand} onChange={(e) => update("carBrand", e.target.value)} required />
-              <datalist id="car-brands">
-                {SERVICE_CONFIG.carBrands.map((brand) => (
-                  <option key={brand} value={brand} />
-                ))}
-              </datalist>
-            </Field>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label={t("carModel")} error={errors.carModel}>
-                <input className="field" value={form.carModel} onChange={(e) => update("carModel", e.target.value)} required />
-              </Field>
-              <Field label={t("carColor")} error={errors.carColor}>
-                <input className="field" value={form.carColor} onChange={(e) => update("carColor", e.target.value)} required />
-              </Field>
-            </div>
-            <Field label={t("plateNumber")} error={errors.plateNumber}>
-              <input className="field" value={form.plateNumber} onChange={(e) => update("plateNumber", e.target.value)} />
-            </Field>
-            <Field label={t("carPhoto")} error={errors.carImageName}>
-              <label className="flex cursor-pointer items-center gap-3 rounded-[8px] border border-dashed border-sky-300 bg-sky-50/70 p-3 text-sm font-bold text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
-                <Upload className="h-4 w-4" />
-                <span className="truncate">{form.carImageName || t("choosePhoto")}</span>
-                <input className="sr-only" type="file" accept="image/*" onChange={(e) => update("carImageName", e.target.files?.[0]?.name || "")} />
-              </label>
-            </Field>
-          </>
-        ) : null}
-
-        {step === 2 ? (
-          <>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label={t("governorate")}>
                 <input className="field" value={DEFAULT_GOVERNORATE.name[language]} disabled />
@@ -319,39 +272,79 @@ export function BookingForm() {
           </>
         ) : null}
 
-        {step === 3 ? (
-          <Field label={`${t("bookingDate")} (${language === "ar" ? DEFAULT_SERVICE.bookingWindowAr : DEFAULT_SERVICE.bookingWindow})`} error={errors.bookingDate}>
-            <input className="field" type="date" min={getTomorrowDateValue()} value={form.bookingDate} onChange={(e) => update("bookingDate", e.target.value)} required />
-            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
-              {upcomingDates.map((date) => {
-                const selected = date === form.bookingDate;
-                const full = selected && capacity?.fullyBooked;
-                return (
-                  <button
-                    type="button"
-                    key={date}
-                    disabled={full}
-                    onClick={() => update("bookingDate", date)}
-                    className={`min-h-20 rounded-[8px] border p-2 text-start text-xs transition ${
-                      selected ? "border-sky-500 bg-sky-50 text-sky-950 dark:bg-sky-950 dark:text-sky-100" : "border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                    } ${full ? "cursor-not-allowed opacity-50" : ""}`}
-                  >
-                    <span className="block font-black">{formatDisplayDate(date)}</span>
-                    <span className="mt-1 block text-[0.68rem]">{language === "ar" ? DEFAULT_SERVICE.bookingWindowAr : DEFAULT_SERVICE.bookingWindow}</span>
-                    {selected ? (
-                      <span className="mt-1 block font-bold">
-                        {loadingCapacity ? t("checking") : capacity?.fullyBooked ? t("fullyBooked") : `${capacity?.remaining ?? "-"} ${t("left")}`}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
+        {step === 1 ? (
+          <>
+            <Field label={t("carBrand")} error={errors.carBrand}>
+              <input className="field" list="car-brands" value={form.carBrand} onChange={(e) => update("carBrand", e.target.value)} required />
+              <datalist id="car-brands">
+                {SERVICE_CONFIG.carBrands.map((brand) => (
+                  <option key={brand} value={brand} />
+                ))}
+              </datalist>
+            </Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={t("carModel")} error={errors.carModel}>
+                <input className="field" value={form.carModel} onChange={(e) => update("carModel", e.target.value)} required />
+              </Field>
+              <Field label={t("carColor")} error={errors.carColor}>
+                <input className="field" value={form.carColor} onChange={(e) => update("carColor", e.target.value)} required />
+              </Field>
             </div>
-          </Field>
+            <Field label={t("plateNumber")} error={errors.plateNumber}>
+              <input className="field" value={form.plateNumber} onChange={(e) => update("plateNumber", e.target.value)} />
+            </Field>
+            <Field label={t("carPhoto")} error={errors.carImageName}>
+              <label className="flex cursor-pointer items-center gap-3 rounded-[8px] border border-dashed border-sky-300 bg-sky-50/70 p-3 text-sm font-bold text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
+                <Upload className="h-4 w-4" />
+                <span className="truncate">{form.carImageName || t("choosePhoto")}</span>
+                <input className="sr-only" type="file" accept="image/*" onChange={(e) => update("carImageName", e.target.files?.[0]?.name || "")} />
+              </label>
+            </Field>
+            <Field label={t("promoCode")} error={errors.promoCode}>
+              <input className="field" value={form.promoCode} onChange={(e) => update("promoCode", e.target.value)} />
+            </Field>
+            <Field label={t("notes")} error={errors.notes}>
+              <textarea className="field min-h-28 resize-y" value={form.notes} onChange={(e) => update("notes", e.target.value)} />
+            </Field>
+            <label className="flex items-start gap-3 rounded-[8px] bg-white/80 p-3 text-sm leading-6 text-slate-700 dark:bg-slate-900/80 dark:text-slate-200">
+              <input type="checkbox" className="mt-1 h-4 w-4 accent-sky-600" checked={form.consent} onChange={(e) => update("consent", e.target.checked)} />
+              <span>{t("consent")}</span>
+            </label>
+            {errors.consent ? <p className="error-text">{errors.consent}</p> : null}
+            <input className="hidden" tabIndex={-1} autoComplete="off" value={form.website} onChange={(e) => update("website", e.target.value)} />
+          </>
         ) : null}
 
-        {step === 4 ? (
+        {step === 2 ? (
           <>
+            <Field label={`${t("bookingDate")} (${language === "ar" ? DEFAULT_SERVICE.bookingWindowAr : DEFAULT_SERVICE.bookingWindow})`} error={errors.bookingDate}>
+              <input className="field" type="date" min={getTomorrowDateValue()} value={form.bookingDate} onChange={(e) => update("bookingDate", e.target.value)} required />
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                {upcomingDates.map((date) => {
+                  const selected = date === form.bookingDate;
+                  const full = selected && capacity?.fullyBooked;
+                  return (
+                    <button
+                      type="button"
+                      key={date}
+                      disabled={full}
+                      onClick={() => update("bookingDate", date)}
+                      className={`min-h-20 rounded-[8px] border p-2 text-start text-xs transition ${
+                        selected ? "border-sky-500 bg-sky-50 text-sky-950 dark:bg-sky-950 dark:text-sky-100" : "border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                      } ${full ? "cursor-not-allowed opacity-50" : ""}`}
+                    >
+                      <span className="block font-black">{formatDisplayDate(date)}</span>
+                      <span className="mt-1 block text-[0.68rem]">{language === "ar" ? DEFAULT_SERVICE.bookingWindowAr : DEFAULT_SERVICE.bookingWindow}</span>
+                      {selected ? (
+                        <span className="mt-1 block font-bold">
+                          {loadingCapacity ? t("checking") : capacity?.fullyBooked ? t("fullyBooked") : `${capacity?.remaining ?? "-"} ${t("left")}`}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
             <div className="rounded-[8px] border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950 dark:border-amber-900 dark:bg-amber-950/35 dark:text-amber-100">
               <p className="font-black">{t("importantNoticeTitle")}</p>
               <p className="mt-2 whitespace-pre-line">{t("preSubmitNotice")}</p>
@@ -361,28 +354,6 @@ export function BookingForm() {
               <span>{t("acknowledgeWindow")}</span>
             </label>
             {errors.washWindowAcknowledged ? <p className="error-text">{errors.washWindowAcknowledged}</p> : null}
-          </>
-        ) : null}
-
-        {step === 5 ? (
-          <>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <Field label={t("promoCode")} error={errors.promoCode}>
-                <input className="field" value={form.promoCode} onChange={(e) => update("promoCode", e.target.value)} />
-              </Field>
-              <Field label={t("referralCode")}>
-                <input className="field" value={form.referralCode} onChange={(e) => update("referralCode", e.target.value)} />
-              </Field>
-              <Field label={t("notes")} error={errors.notes}>
-                <input className="field" value={form.notes} onChange={(e) => update("notes", e.target.value)} />
-              </Field>
-            </div>
-            <label className="flex items-start gap-3 rounded-[8px] bg-white/80 p-3 text-sm leading-6 text-slate-700 dark:bg-slate-900/80 dark:text-slate-200">
-              <input type="checkbox" className="mt-1 h-4 w-4 accent-sky-600" checked={form.consent} onChange={(e) => update("consent", e.target.checked)} />
-              <span>{t("consent")}</span>
-            </label>
-            {errors.consent ? <p className="error-text">{errors.consent}</p> : null}
-            <input className="hidden" tabIndex={-1} autoComplete="off" value={form.website} onChange={(e) => update("website", e.target.value)} />
           </>
         ) : null}
 

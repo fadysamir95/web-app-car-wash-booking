@@ -31,6 +31,15 @@ export const SERVICE_CONFIG = {
   carBrands: ["Toyota", "Hyundai", "Kia", "BMW", "Mercedes", "Nissan", "Chevrolet", "MG", "Renault", "Peugeot", "Other"]
 } as const;
 
+export const PROMO_CODES = [
+  {
+    code: "free-wash",
+    type: "free_wash",
+    discountEgp: SERVICE_CONFIG.services[0].priceEgp,
+    label: "Free wash"
+  }
+] as const;
+
 export const DEFAULT_GOVERNORATE = SERVICE_CONFIG.governorates[0];
 export const DEFAULT_CITY = DEFAULT_GOVERNORATE.cities[0];
 export const DEFAULT_SERVICE = SERVICE_CONFIG.services[0];

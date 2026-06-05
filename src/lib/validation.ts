@@ -3,6 +3,7 @@ import {
   DEFAULT_CITY,
   DEFAULT_GOVERNORATE,
   PAYMENT_STATUSES,
+  PROMO_CODES,
   SERVICE_AREAS,
   type BookingStatus,
   type PaymentStatus
@@ -44,8 +45,7 @@ export function validateBookingInput(raw: unknown): ValidationResult<BookingInpu
   const carLocation = normalizeString(source.carLocation);
   const bookingDate = normalizeString(source.bookingDate);
   const notes = normalizeString(source.notes);
-  const promoCode = normalizeString(source.promoCode).toUpperCase();
-  const referralCode = normalizeString(source.referralCode).toUpperCase();
+  const promoCode = normalizeString(source.promoCode).toLowerCase();
   const sourceLanguage = normalizeString(source.sourceLanguage) === "ar" ? "ar" : "en";
   const consent = source.consent === true;
   const washWindowAcknowledged = source.washWindowAcknowledged === true;
@@ -59,6 +59,7 @@ export function validateBookingInput(raw: unknown): ValidationResult<BookingInpu
   if (!SERVICE_AREAS.some((item) => item.id === area)) errors.area = "Choose one of the supported areas.";
   if (address.length < 6 && carLocation.length < 5) errors.location = "Enter a detailed address or share the car location.";
   if (!isBookingDateAllowed(bookingDate)) errors.bookingDate = "The earliest available booking date is tomorrow.";
+  if (promoCode && !PROMO_CODES.some((promo) => promo.code === promoCode)) errors.promoCode = "This promo code is not valid.";
   if (!consent) errors.consent = "Consent is required to complete the booking.";
   if (!washWindowAcknowledged) errors.washWindowAcknowledged = "You must acknowledge the wash time window.";
   if (honeypot) errors.form = "Unable to submit this booking.";
@@ -87,7 +88,6 @@ export function validateBookingInput(raw: unknown): ValidationResult<BookingInpu
       bookingDate,
       notes: notes || undefined,
       promoCode: promoCode || undefined,
-      referralCode: referralCode || undefined,
       loyaltyPoints: 0,
       marketingConsent: consent,
       consent,

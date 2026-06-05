@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { DEFAULT_SERVICE, SERVICE_CONFIG } from "./constants";
@@ -57,7 +57,7 @@ export async function createBooking(input: BookingInput) {
   }
 
   const booking: Booking = {
-    id: randomUUID(),
+    id: createBookingReference(),
     customerId: `cust_${input.phoneNumber}`,
     ...input,
     consent: true,
@@ -71,6 +71,10 @@ export async function createBooking(input: BookingInput) {
 
   await writeBookings([booking, ...bookings]);
   return { ok: true as const, booking };
+}
+
+function createBookingReference() {
+  return `CW-${randomBytes(3).toString("hex").toUpperCase()}`;
 }
 
 export async function updateBookingStatus(

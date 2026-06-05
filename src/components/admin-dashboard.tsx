@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { BarChart3, Check, ExternalLink, LogOut, Search, Users } from "lucide-react";
+import { BarChart3, Bell, Check, ExternalLink, LogOut, Search, Users } from "lucide-react";
 import { BOOKING_STATUSES, DEFAULT_SERVICE, PAYMENT_STATUSES, SERVICE_AREAS, SERVICE_CONFIG } from "@/lib/constants";
 import type { Booking, CustomerSummary } from "@/lib/types";
 import { useLanguage } from "./language-provider";
@@ -18,6 +18,9 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
   const [areaFilter, setAreaFilter] = useState("");
   const [paymentFilter, setPaymentFilter] = useState("");
   const [query, setQuery] = useState("");
+  const [newBookingAlert, setNewBookingAlert] = useState<Booking | null>(null);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">("unsupported");
+  const knownBookingIds = useRef(new Set(initialBookings.map((booking) => booking.id)));
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -98,6 +101,49 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
     window.location.reload();
   }
 
+  useEffect(() => {
+    queueMicrotask(() => {
+      if ("Notification" in window) setNotificationPermission(Notification.permission);
+    });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkNewBookings() {
+      const response = await fetch("/api/admin/bookings", { cache: "no-store" });
+      if (!response.ok) return;
+      const payload = (await response.json()) as { bookings: Booking[] };
+      if (cancelled) return;
+
+      const latestNewBooking = payload.bookings.find((booking) => !knownBookingIds.current.has(booking.id));
+      knownBookingIds.current = new Set(payload.bookings.map((booking) => booking.id));
+      setBookings(payload.bookings);
+
+      if (latestNewBooking) {
+        setNewBookingAlert(latestNewBooking);
+        if ("Notification" in window && Notification.permission === "granted") {
+          new Notification(t("newBookingAlert"), {
+            body: `${latestNewBooking.customerName} - ${latestNewBooking.phoneNumber}`
+          });
+        }
+      }
+    }
+
+    const timer = window.setInterval(checkNewBookings, 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [t]);
+
+  async function enableNotifications() {
+    if ("Notification" in window) {
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+    }
+  }
+
   return (
     <main className="min-h-svh bg-slate-100 px-4 py-5 dark:bg-slate-950 sm:px-6" dir={dir}>
       <div className="mx-auto max-w-7xl">
@@ -126,6 +172,30 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
           <Metric title={t("confirmedPayments")} value={bookings.filter((booking) => booking.paymentStatus === "Verified").length} />
           <Metric title={t("revenue")} value={`${confirmedRevenue} EGP`} />
         </section>
+
+        <div className="mt-4 grid gap-3">
+          {newBookingAlert ? (
+            <button
+              type="button"
+              onClick={() => {
+                setTab("bookings");
+                setNewBookingAlert(null);
+              }}
+              className="flex items-center justify-between gap-3 rounded-[8px] border border-emerald-300 bg-emerald-50 p-4 text-start text-sm font-black text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100"
+            >
+              <span>
+                {t("newBookingAlert")}: {newBookingAlert.customerName} - {newBookingAlert.phoneNumber}
+              </span>
+              <Bell className="h-5 w-5" />
+            </button>
+          ) : null}
+          {notificationPermission === "default" ? (
+            <button type="button" onClick={enableNotifications} className="inline-flex h-10 w-fit items-center gap-2 rounded-[8px] bg-white px-4 text-sm font-black text-slate-700 shadow-sm dark:bg-slate-900 dark:text-slate-200">
+              <Bell className="h-4 w-4" />
+              {t("enableNotifications")}
+            </button>
+          ) : null}
+        </div>
 
         <nav className="mt-5 flex gap-2 overflow-x-auto rounded-[8px] bg-white p-2 shadow-sm dark:bg-slate-900">
           <TabButton active={tab === "customers"} onClick={() => setTab("customers")} icon={<Users className="h-4 w-4" />} label={t("customers")} />

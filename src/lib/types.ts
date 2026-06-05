@@ -21,7 +21,6 @@ export type Booking = {
   bookingTimeWindow: string;
   notes?: string;
   promoCode?: string;
-  referralCode?: string;
   loyaltyPoints: number;
   marketingConsent: boolean;
   consent: true;
