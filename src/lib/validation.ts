@@ -1,4 +1,12 @@
-import { BOOKING_STATUSES, PAYMENT_STATUSES, SERVICE_CONFIG, type BookingStatus, type PaymentStatus } from "./constants";
+import {
+  BOOKING_STATUSES,
+  DEFAULT_CITY,
+  DEFAULT_GOVERNORATE,
+  PAYMENT_STATUSES,
+  SERVICE_AREAS,
+  type BookingStatus,
+  type PaymentStatus
+} from "./constants";
 import { isBookingDateAllowed } from "./date";
 import type { BookingInput } from "./types";
 
@@ -25,7 +33,9 @@ export function validateBookingInput(raw: unknown): ValidationResult<BookingInpu
   const errors: Record<string, string> = {};
   const customerName = normalizeString(source.customerName);
   const phoneNumber = normalizePhone(normalizeString(source.phoneNumber));
-  const carType = normalizeString(source.carType);
+  const carBrand = normalizeString(source.carBrand);
+  const carModel = normalizeString(source.carModel);
+  const carColor = normalizeString(source.carColor);
   const plateNumber = normalizeString(source.plateNumber).toUpperCase();
   const carImageName = normalizeString(source.carImageName);
   const area = normalizeString(source.area);
@@ -35,37 +45,54 @@ export function validateBookingInput(raw: unknown): ValidationResult<BookingInpu
   const bookingDate = normalizeString(source.bookingDate);
   const notes = normalizeString(source.notes);
   const promoCode = normalizeString(source.promoCode).toUpperCase();
+  const referralCode = normalizeString(source.referralCode).toUpperCase();
+  const sourceLanguage = normalizeString(source.sourceLanguage) === "ar" ? "ar" : "en";
   const consent = source.consent === true;
+  const washWindowAcknowledged = source.washWindowAcknowledged === true;
+  const honeypot = normalizeString(source.website);
 
   if (customerName.length < 3) errors.customerName = "Enter the full customer name.";
   if (!egyptPhonePattern.test(phoneNumber)) errors.phoneNumber = "Enter a valid Egyptian mobile number.";
-  if (carType.length < 2) errors.carType = "Enter car color and model.";
-  if (plateNumber.length < 2) errors.plateNumber = "Enter the car plate number.";
-  if (!SERVICE_CONFIG.areas.includes(area as never)) errors.area = "Choose one of the supported areas.";
-  if (address.length < 6) errors.address = "Enter a clear detailed address.";
-  if (!buildingNumber) errors.buildingNumber = "Enter the building number.";
-  if (carLocation.length < 5) errors.carLocation = "Share geolocation or paste a Google Maps link.";
+  if (carBrand.length < 2) errors.carBrand = "Enter or choose the car brand.";
+  if (carModel.length < 1) errors.carModel = "Enter the car model.";
+  if (carColor.length < 2) errors.carColor = "Enter the car color.";
+  if (!SERVICE_AREAS.some((item) => item.id === area)) errors.area = "Choose one of the supported areas.";
+  if (address.length < 6 && carLocation.length < 5) errors.location = "Enter a detailed address or share the car location.";
   if (!isBookingDateAllowed(bookingDate)) errors.bookingDate = "The earliest available booking date is tomorrow.";
   if (!consent) errors.consent = "Consent is required to complete the booking.";
+  if (!washWindowAcknowledged) errors.washWindowAcknowledged = "You must acknowledge the wash time window.";
+  if (honeypot) errors.form = "Unable to submit this booking.";
 
   if (Object.keys(errors).length > 0) return { ok: false, errors };
+
+  const selectedArea = SERVICE_AREAS.find((item) => item.id === area)!;
 
   return {
     ok: true,
     data: {
       customerName,
       phoneNumber,
-      carType,
-      plateNumber,
+      carBrand,
+      carModel,
+      carColor,
+      plateNumber: plateNumber || undefined,
       carImageName: carImageName || undefined,
+      governorate: DEFAULT_GOVERNORATE.id,
+      city: DEFAULT_CITY.id,
       area: area as BookingInput["area"],
-      address,
-      buildingNumber,
-      carLocation,
+      areaName: selectedArea.name.en,
+      address: address || undefined,
+      buildingNumber: buildingNumber || undefined,
+      carLocation: carLocation || undefined,
       bookingDate,
       notes: notes || undefined,
       promoCode: promoCode || undefined,
-      consent
+      referralCode: referralCode || undefined,
+      loyaltyPoints: 0,
+      marketingConsent: consent,
+      consent,
+      washWindowAcknowledged,
+      sourceLanguage
     }
   };
 }

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { SERVICE_CONFIG } from "./constants";
+import { DEFAULT_SERVICE, SERVICE_CONFIG } from "./constants";
 import type { Booking, BookingCapacity, BookingInput } from "./types";
 
 const dataDir = path.join(process.cwd(), "data");
@@ -58,9 +58,12 @@ export async function createBooking(input: BookingInput) {
 
   const booking: Booking = {
     id: randomUUID(),
+    customerId: `cust_${input.phoneNumber}`,
     ...input,
     consent: true,
-    bookingTimeWindow: SERVICE_CONFIG.bookingWindow,
+    washWindowAcknowledged: true,
+    bookingTimeWindow: DEFAULT_SERVICE.bookingWindow,
+    loyaltyPoints: input.loyaltyPoints || 0,
     paymentStatus: "Pending",
     bookingStatus: "Pending",
     createdAt: new Date().toISOString()
