@@ -5,12 +5,9 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
-  Copy,
   Loader2,
   LocateFixed,
-  QrCode,
-  Upload,
-  WalletCards
+  Upload
 } from "lucide-react";
 import { DEFAULT_CITY, DEFAULT_GOVERNORATE, DEFAULT_SERVICE, SERVICE_AREAS, SERVICE_CONFIG } from "@/lib/constants";
 import { formatDisplayDate, getTomorrowDateValue, getUpcomingDateValues } from "@/lib/date";
@@ -68,7 +65,6 @@ export function BookingForm() {
   const [loadingCapacity, setLoadingCapacity] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   const steps = [
     t("customerInfo"),
@@ -127,8 +123,10 @@ export function BookingForm() {
       if (form.address.trim().length < 6 && form.carLocation.trim().length < 5) nextErrors.location = t("requiredLocation");
     }
     if (targetStep === 3 && !form.bookingDate) nextErrors.bookingDate = t("requiredDate");
-    if (targetStep === 5) {
+    if (targetStep === 4) {
       if (!form.washWindowAcknowledged) nextErrors.washWindowAcknowledged = t("requiredAck");
+    }
+    if (targetStep === 5) {
       if (!form.consent) nextErrors.consent = t("requiredConsent");
     }
     setErrors(nextErrors);
@@ -164,15 +162,21 @@ export function BookingForm() {
     );
   }
 
-  async function copyPaymentNumber() {
-    await navigator.clipboard.writeText(SERVICE_CONFIG.paymentPhone);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1600);
+  function validateAllSteps() {
+    const checks = [0, 1, 2, 3, 4, 5];
+    for (const item of checks) {
+      if (!validateStep(item)) {
+        setStep(item);
+        window.setTimeout(() => document.querySelector(".error-text")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+        return false;
+      }
+    }
+    return true;
   }
 
   async function submitBooking(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!validateStep(5)) return;
+    if (!validateAllSteps()) return;
     setSubmitting(true);
     setErrors({});
 
@@ -186,6 +190,13 @@ export function BookingForm() {
     setSubmitting(false);
     if (!response.ok || !payload.booking) {
       setErrors(payload.errors || { form: t("genericError") });
+      const serverErrors = payload.errors || {};
+      if (serverErrors.customerName || serverErrors.phoneNumber) setStep(0);
+      else if (serverErrors.carBrand || serverErrors.carModel || serverErrors.carColor) setStep(1);
+      else if (serverErrors.area || serverErrors.location) setStep(2);
+      else if (serverErrors.bookingDate) setStep(3);
+      else if (serverErrors.washWindowAcknowledged) setStep(4);
+      else setStep(5);
       return;
     }
 
@@ -340,17 +351,21 @@ export function BookingForm() {
         ) : null}
 
         {step === 4 ? (
-          <PaymentPanel copied={copied} onCopy={copyPaymentNumber} />
-        ) : null}
-
-        {step === 5 ? (
           <>
-            <Alert>{t("washWindowAck")}</Alert>
+            <div className="rounded-[8px] border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950 dark:border-amber-900 dark:bg-amber-950/35 dark:text-amber-100">
+              <p className="font-black">{t("importantNoticeTitle")}</p>
+              <p className="mt-2 whitespace-pre-line">{t("preSubmitNotice")}</p>
+            </div>
             <label className="flex items-start gap-3 rounded-[8px] bg-white/80 p-3 text-sm leading-6 text-slate-700 dark:bg-slate-900/80 dark:text-slate-200">
               <input type="checkbox" className="mt-1 h-4 w-4 accent-sky-600" checked={form.washWindowAcknowledged} onChange={(e) => update("washWindowAcknowledged", e.target.checked)} />
               <span>{t("acknowledgeWindow")}</span>
             </label>
             {errors.washWindowAcknowledged ? <p className="error-text">{errors.washWindowAcknowledged}</p> : null}
+          </>
+        ) : null}
+
+        {step === 5 ? (
+          <>
             <div className="grid gap-4 sm:grid-cols-3">
               <Field label={t("promoCode")} error={errors.promoCode}>
                 <input className="field" value={form.promoCode} onChange={(e) => update("promoCode", e.target.value)} />
@@ -392,42 +407,6 @@ export function BookingForm() {
         </div>
       </div>
     </form>
-  );
-}
-
-function PaymentPanel({ copied, onCopy }: { copied: boolean; onCopy: () => void }) {
-  const { t } = useLanguage();
-
-  return (
-    <div className="rounded-[8px] border border-sky-200 bg-sky-50 p-4 dark:border-sky-900 dark:bg-sky-950/35">
-      <div className="flex items-center gap-2 text-sm font-black text-sky-950 dark:text-sky-100">
-        <WalletCards className="h-4 w-4" />
-        {t("paymentInstructions")}
-      </div>
-      <p className="mt-3 text-sm leading-6 text-slate-700 dark:text-slate-200">
-        {t("servicePrice")}: <strong>{DEFAULT_SERVICE.priceEgp} EGP</strong>. {t("paymentPending")}
-      </p>
-      <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
-        <div className="rounded-[8px] bg-white p-3 dark:bg-slate-900">
-          <p className="text-xs font-black uppercase text-slate-500">{t("instapayNumber")}</p>
-          <p className="mt-1 text-xl font-black text-slate-950 dark:text-white">{SERVICE_CONFIG.paymentPhone}</p>
-        </div>
-        <button type="button" onClick={onCopy} className="inline-flex h-12 items-center justify-center gap-2 rounded-[8px] bg-white px-4 text-sm font-black text-sky-800 ring-1 ring-sky-200 dark:bg-slate-900 dark:text-sky-200 dark:ring-sky-900">
-          <Copy className="h-4 w-4" />
-          {copied ? t("copied") : t("copyNumber")}
-        </button>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <a href={`instapay://pay?phone=${SERVICE_CONFIG.paymentPhone}&amount=${DEFAULT_SERVICE.priceEgp}`} className="inline-flex h-11 items-center gap-2 rounded-[8px] bg-sky-600 px-3 text-sm font-black text-white">
-          <WalletCards className="h-4 w-4" />
-          {t("openInstapay")}
-        </a>
-        <div className="inline-flex min-h-24 flex-1 items-center gap-3 rounded-[8px] border border-dashed border-slate-300 bg-white p-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-          <QrCode className="h-8 w-8" />
-          <span>{t("qrFuture")}</span>
-        </div>
-      </div>
-    </div>
   );
 }
 

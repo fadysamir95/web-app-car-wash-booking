@@ -8,8 +8,8 @@ type RouteContext = {
 };
 
 type Updates = {
-  paymentStatus?: "Pending" | "Confirmed";
-  bookingStatus?: "Pending" | "Confirmed" | "Cancelled" | "Completed";
+  paymentStatus?: "Pending" | "Verified" | "Rejected";
+  bookingStatus?: "Pending Payment" | "Payment Under Review" | "Confirmed" | "Scheduled" | "Completed" | "Cancelled";
 };
 
 export async function PATCH(request: Request, context: RouteContext) {
