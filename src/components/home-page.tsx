@@ -29,9 +29,6 @@ export function HomePage() {
               {t("brand")}
             </Link>
             <div className="flex items-center gap-2">
-              <a href="/admin" className="inline-flex h-10 items-center rounded-[8px] bg-white/14 px-3 text-sm font-black text-white ring-1 ring-white/20">
-                {t("admin")}
-              </a>
               <LanguageSwitcher />
             </div>
           </header>

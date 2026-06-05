@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BarChart3, Check, LogOut, Search, Users } from "lucide-react";
+import Link from "next/link";
+import { BarChart3, Check, ExternalLink, LogOut, Search, Users } from "lucide-react";
 import { BOOKING_STATUSES, DEFAULT_SERVICE, PAYMENT_STATUSES, SERVICE_AREAS, SERVICE_CONFIG } from "@/lib/constants";
 import type { Booking, CustomerSummary } from "@/lib/types";
 import { useLanguage } from "./language-provider";
@@ -77,7 +78,7 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
     return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 4);
   }, [bookings, language]);
 
-  const confirmedRevenue = bookings.filter((booking) => booking.paymentStatus === "Confirmed").length * DEFAULT_SERVICE.priceEgp;
+  const confirmedRevenue = bookings.filter((booking) => booking.paymentStatus === "Verified").length * DEFAULT_SERVICE.priceEgp;
   const repeatCustomers = customers.filter((customer) => customer.totalBookings > 1).length;
 
   async function updateBooking(id: string, updates: Partial<Pick<Booking, "paymentStatus" | "bookingStatus">>) {
@@ -106,6 +107,10 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
             <h1 className="text-3xl font-black text-slate-950 dark:text-white">{t("adminDashboard")}</h1>
           </div>
           <div className="flex gap-2">
+            <Link href="/" className="inline-flex h-10 items-center justify-center gap-2 rounded-[8px] bg-sky-600 px-4 text-sm font-black text-white">
+              <ExternalLink className="h-4 w-4" />
+              View Website
+            </Link>
             <LanguageSwitcher />
             <button type="button" onClick={logout} className="inline-flex h-10 items-center justify-center gap-2 rounded-[8px] bg-slate-950 px-4 text-sm font-black text-white dark:bg-white dark:text-slate-950">
               <LogOut className="h-4 w-4" />
@@ -118,7 +123,7 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
           <Metric title={t("totalCustomers")} value={customers.length} />
           <Metric title={t("totalBookings")} value={bookings.length} />
           <Metric title={t("pendingPayments")} value={bookings.filter((booking) => booking.paymentStatus === "Pending").length} />
-          <Metric title={t("confirmedPayments")} value={bookings.filter((booking) => booking.paymentStatus === "Confirmed").length} />
+          <Metric title={t("confirmedPayments")} value={bookings.filter((booking) => booking.paymentStatus === "Verified").length} />
           <Metric title={t("revenue")} value={`${confirmedRevenue} EGP`} />
         </section>
 
@@ -181,7 +186,7 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
                   <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
                     <StatusSelect label={t("paymentStatus")} value={booking.paymentStatus} options={PAYMENT_STATUSES} onChange={(value) => updateBooking(booking.id, { paymentStatus: value as Booking["paymentStatus"] })} />
                     <StatusSelect label={t("bookingStatus")} value={booking.bookingStatus} options={BOOKING_STATUSES} onChange={(value) => updateBooking(booking.id, { bookingStatus: value as Booking["bookingStatus"] })} />
-                    <button type="button" onClick={() => updateBooking(booking.id, { paymentStatus: "Confirmed", bookingStatus: "Confirmed" })} className="inline-flex h-12 items-center justify-center gap-2 self-end rounded-[8px] bg-emerald-500 px-4 text-sm font-black text-white">
+                    <button type="button" onClick={() => updateBooking(booking.id, { paymentStatus: "Verified", bookingStatus: "Confirmed" })} className="inline-flex h-12 items-center justify-center gap-2 self-end rounded-[8px] bg-emerald-500 px-4 text-sm font-black text-white">
                       <Check className="h-4 w-4" />
                       {t("confirm")}
                     </button>

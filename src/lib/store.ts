@@ -65,7 +65,7 @@ export async function createBooking(input: BookingInput) {
     bookingTimeWindow: DEFAULT_SERVICE.bookingWindow,
     loyaltyPoints: input.loyaltyPoints || 0,
     paymentStatus: "Pending",
-    bookingStatus: "Pending",
+    bookingStatus: "Pending Payment",
     createdAt: new Date().toISOString()
   };
 
