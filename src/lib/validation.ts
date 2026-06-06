@@ -40,6 +40,7 @@ export function validateBookingInput(
   const carBrand = normalizeString(source.carBrand);
   const carModel = normalizeString(source.carModel);
   const carColor = normalizeString(source.carColor);
+  const carYear = normalizeString(source.carYear);
   const plateNumber = normalizeString(source.plateNumber).toUpperCase();
   const carImageName = normalizeString(source.carImageName);
   const area = normalizeString(source.area);
@@ -59,6 +60,7 @@ export function validateBookingInput(
   if (carBrand.length < 2) errors.carBrand = "Enter or choose the car brand.";
   if (carModel.length < 1) errors.carModel = "Enter the car model.";
   if (carColor.length < 2) errors.carColor = "Enter the car color.";
+  if (!/^(19[8-9]\d|20[0-2]\d)$/.test(carYear)) errors.carYear = "Enter a valid manufacture year.";
   const activeAreas: Array<{ id: string; nameEn: string }> = settings?.areas.filter((item) => item.active).map((item) => ({
     id: item.id,
     nameEn: item.nameEn
@@ -67,7 +69,7 @@ export function validateBookingInput(
     nameEn: item.name.en
   }));
   if (!activeAreas.some((item) => item.id === area)) errors.area = "Choose one of the supported areas.";
-  if (address.length < 6 && carLocation.length < 5) errors.location = "Enter a detailed address or share the car location.";
+  if (buildingNumber.length < 1) errors.buildingNumber = "Enter the building number.";
   if (!isBookingDateAllowed(bookingDate)) errors.bookingDate = "The earliest available booking date is tomorrow.";
   if (promoCode && !promoCodes.some((promo) => promo.active && promo.code === promoCode)) errors.promoCode = "This promo code is not valid.";
   if (!consent) errors.consent = "Consent is required to complete the booking.";
@@ -86,6 +88,7 @@ export function validateBookingInput(
       carBrand,
       carModel,
       carColor,
+      carYear,
       plateNumber: plateNumber || undefined,
       carImageName: carImageName || undefined,
       governorate: DEFAULT_GOVERNORATE.id,

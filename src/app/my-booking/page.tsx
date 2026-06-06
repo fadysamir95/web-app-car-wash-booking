@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Clock, MessageCircle, Search } from "lucide-react";
+import { ArrowLeft, Clock, MessageCircle, Search, WalletCards } from "lucide-react";
 import { PROMO_CODES, SERVICE_CONFIG } from "@/lib/constants";
 import { formatDisplayDate } from "@/lib/date";
 import { bookingFinalPrice } from "@/lib/pricing";
@@ -16,6 +16,20 @@ export default function MyBookingPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get("ref")?.trim();
+    if (!ref || ref.length < 3) return;
+    queueMicrotask(() => {
+      setQuery(ref);
+      setLoading(true);
+      setSearched(true);
+      fetch(`/api/bookings?query=${encodeURIComponent(ref)}`, { cache: "no-store" })
+        .then((response) => response.json())
+        .then((payload: { bookings: Booking[] }) => setBookings(payload.bookings || []))
+        .finally(() => setLoading(false));
+    });
+  }, []);
 
   async function search(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -41,7 +55,7 @@ export default function MyBookingPage() {
               <ArrowLeft className="h-4 w-4 rtl:rotate-180" />
               {t("backToHome")}
             </Link>
-            <LanguageSwitcher />
+            <LanguageSwitcher variant="surface" />
           </div>
         </header>
 
@@ -73,7 +87,12 @@ function BookingDetails({ booking, language }: { booking: Booking; language: "en
   const finalPrice = bookingFinalPrice(currentBooking, PROMO_CODES.map((promo) => ({ ...promo, discountType: "amount", active: true })));
   const expiresAt = currentBooking.expiresAt ? new Date(currentBooking.expiresAt).getTime() : null;
   const remainingMs = expiresAt && now > 0 ? Math.max(expiresAt - now, 0) : null;
-  const canPay = finalPrice > 0 && currentBooking.bookingStatus === "Pending" && remainingMs !== 0;
+  const isPendingPaidBooking = finalPrice > 0 && currentBooking.bookingStatus === "Pending";
+  const countdownReady = !expiresAt || now > 0;
+  const hasActiveCountdown = Boolean(remainingMs && remainingMs > 0);
+  const showInstapay = isPendingPaidBooking && countdownReady && hasActiveCountdown;
+  const showPaymentScreenshot = isPendingPaidBooking && countdownReady && !hasActiveCountdown;
+  const instapayUrl = `instapay://pay?phone=${SERVICE_CONFIG.paymentPhone}&amount=${finalPrice}`;
   const whatsAppUrl = useMemo(() => {
     const message =
       language === "ar"
@@ -118,7 +137,14 @@ function BookingDetails({ booking, language }: { booking: Booking; language: "en
 
       {currentBooking.cancellationReason ? <p className="mt-4 rounded-[8px] bg-rose-50 p-3 text-sm font-bold text-rose-800 dark:bg-rose-950/40 dark:text-rose-100">{currentBooking.cancellationReason}</p> : null}
 
-      {canPay ? (
+      {showInstapay ? (
+        <a href={instapayUrl} className="mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-[8px] bg-sky-600 px-4 text-sm font-black text-white">
+          <WalletCards className="h-4 w-4" />
+          {t("openInstapay")}
+        </a>
+      ) : null}
+
+      {showPaymentScreenshot ? (
         <a href={whatsAppUrl} target="_blank" rel="noreferrer" className="mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-[8px] bg-emerald-500 px-4 text-sm font-black text-white">
           <MessageCircle className="h-4 w-4" />
           {t("sendScreenshot")}

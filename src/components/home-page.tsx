@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Clock, Loader2, MapPin, MessageCircle, Search, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, Clock, Loader2, MapPin, MessageCircle, Search, Sparkles } from "lucide-react";
 import { BookingForm } from "@/components/booking-form";
 import { DEFAULT_SERVICE, PROMO_CODES, SERVICE_AREAS, SERVICE_CONFIG } from "@/lib/constants";
 import { formatDisplayDate } from "@/lib/date";
@@ -39,10 +39,11 @@ export function HomePage() {
   }, []);
 
   const activeAreas = settings.areas.filter((area) => area.active);
+  const startingPrice = activeAreas.length > 0 ? Math.min(...activeAreas.map((area) => area.priceEgp)) : settings.servicePriceEgp;
 
   return (
     <main dir={dir}>
-      <section className="relative min-h-[92svh] overflow-hidden">
+      <section className="relative min-h-[86svh] overflow-hidden">
         <Image
           src="/images/hero-car-wash.png"
           alt="Clean car at night ready for mobile car wash service"
@@ -62,7 +63,7 @@ export function HomePage() {
             </div>
           </header>
 
-          <div className="flex min-h-[38svh] flex-col justify-center pb-2 pt-8 text-white lg:min-h-[78svh]">
+          <div className="flex min-h-[34svh] flex-col justify-center pb-2 pt-6 text-white lg:min-h-[70svh]">
             <div className="inline-flex w-fit items-center gap-2 rounded-full bg-white/12 px-3 py-2 text-sm font-bold ring-1 ring-white/20">
               <Sparkles className="h-4 w-4 text-sky-200" />
               {t("heroBadge")}
@@ -79,9 +80,9 @@ export function HomePage() {
               </Link>
             </div>
             <div className="mt-8 grid gap-3 text-sm text-slate-100 sm:grid-cols-3">
+              <Fact icon={<Sparkles className="h-4 w-4" />} title={`${startingPrice} EGP`} />
               <Fact icon={<Clock className="h-4 w-4" />} title={language === "ar" ? settings.washWindowAr : settings.washWindow} />
               <Fact icon={<MapPin className="h-4 w-4" />} title={`${activeAreas.length} ${t("supportedAreas")}`} />
-              <Fact icon={<ShieldCheck className="h-4 w-4" />} title={`${settings.maxBookingsPerDay} ${t("perDay")}`} />
             </div>
           </div>
           <div className="pb-10 lg:flex lg:items-end lg:pb-4">

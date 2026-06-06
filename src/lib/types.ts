@@ -27,6 +27,7 @@ export type Booking = {
   carBrand: string;
   carModel: string;
   carColor: string;
+  carYear?: string;
   plateNumber?: string;
   carImageName?: string;
   governorate: string;

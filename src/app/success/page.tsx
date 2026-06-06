@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, Copy, MessageCircle, WalletCards } from "lucide-react";
+import { CheckCircle2, Copy, ExternalLink, MessageCircle, WalletCards } from "lucide-react";
 import { PROMO_CODES, SERVICE_CONFIG } from "@/lib/constants";
 import { formatDisplayDate } from "@/lib/date";
 import { finalPriceFromPromo } from "@/lib/pricing";
@@ -13,6 +13,7 @@ import { LanguageSwitcher } from "@/components/language-switcher";
 export default function SuccessPage() {
   const { language, dir, t } = useLanguage();
   const [copied, setCopied] = useState(false);
+  const [trackingCopied, setTrackingCopied] = useState(false);
   const [now, setNow] = useState(0);
   const [settings, setSettings] = useState<ServiceSettings | null>(null);
   const [booking] = useState<Booking | null>(() => {
@@ -32,6 +33,8 @@ export default function SuccessPage() {
   const servicePrice = booking?.finalPriceEgp ?? finalPriceFromPromo(appliedPromo ? { ...appliedPromo, active: true } : null, settings?.servicePriceEgp || undefined);
   const isFreeBooking = servicePrice === 0;
   const remainingMs = booking?.expiresAt && !isFreeBooking && now > 0 ? Math.max(new Date(booking.expiresAt).getTime() - now, 0) : null;
+  const trackingPath = booking ? `/my-booking?ref=${encodeURIComponent(booking.id)}` : "/my-booking";
+  const trackingUrl = typeof window !== "undefined" ? `${window.location.origin}${trackingPath}` : trackingPath;
 
   useEffect(() => {
     const firstTick = window.setTimeout(() => setNow(Date.now()), 0);
@@ -59,6 +62,12 @@ export default function SuccessPage() {
     await navigator.clipboard.writeText(settings?.paymentPhone || SERVICE_CONFIG.paymentPhone);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1600);
+  }
+
+  async function copyTrackingLink() {
+    await navigator.clipboard.writeText(trackingUrl);
+    setTrackingCopied(true);
+    window.setTimeout(() => setTrackingCopied(false), 1600);
   }
 
   return (
@@ -121,6 +130,16 @@ export default function SuccessPage() {
 
           <div className="mt-6 rounded-[8px] border border-emerald-300 bg-emerald-50 p-3 text-sm font-black text-emerald-800">
             {t("bookingSubmitted")}
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <Link href={trackingPath} target="_blank" rel="noreferrer" className="inline-flex h-12 items-center justify-center gap-2 rounded-[8px] bg-slate-950 px-4 text-sm font-black text-white">
+              <ExternalLink className="h-4 w-4" />
+              {language === "ar" ? "تتبع الحجز" : "Track booking"}
+            </Link>
+            <button type="button" onClick={copyTrackingLink} className="inline-flex h-12 items-center justify-center gap-2 rounded-[8px] bg-white px-4 text-sm font-black text-slate-950 ring-1 ring-slate-200">
+              <Copy className="h-4 w-4" />
+              {trackingCopied ? t("copied") : language === "ar" ? "نسخ رابط التتبع" : "Copy tracking link"}
+            </button>
           </div>
           {remainingMs !== null ? (
             <div className="mt-4 rounded-[8px] border border-amber-300 bg-amber-50 p-3 text-sm font-black text-amber-950">

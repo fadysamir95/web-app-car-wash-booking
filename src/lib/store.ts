@@ -180,7 +180,9 @@ export async function createBooking(input: BookingInput) {
   }
 
   const appliedPromo = input.promoCode ? activePromoCodes(promoCodes).find((promo) => promo.code === input.promoCode) : null;
-  const finalPrice = finalPriceFromPromo(appliedPromo, settings.servicePriceEgp);
+  const selectedArea = settings.areas.find((area) => area.id === input.area && area.active);
+  const basePrice = selectedArea?.priceEgp ?? settings.servicePriceEgp;
+  const finalPrice = finalPriceFromPromo(appliedPromo, basePrice);
   const isFreeBooking = finalPrice === 0;
   const createdAt = new Date();
   const expiresAt = new Date(createdAt.getTime() + pendingBookingExpiryMs);

@@ -21,6 +21,7 @@ type FormState = {
   carBrand: string;
   carModel: string;
   carColor: string;
+  carYear: string;
   plateLetters: string;
   plateDigits: string;
   carImageName: string;
@@ -42,6 +43,7 @@ const initialState: FormState = {
   carBrand: "",
   carModel: "",
   carColor: "",
+  carYear: "",
   plateLetters: "",
   plateDigits: "",
   carImageName: "",
@@ -52,8 +54,8 @@ const initialState: FormState = {
   bookingDate: getTomorrowDateValue(),
   notes: "",
   promoCode: "",
-  consent: false,
-  washWindowAcknowledged: false,
+  consent: true,
+  washWindowAcknowledged: true,
   website: ""
 };
 
@@ -81,9 +83,13 @@ export function BookingForm() {
   const [otpVerifying, setOtpVerifying] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const [otpDevCode, setOtpDevCode] = useState("");
+  const [promoChecked, setPromoChecked] = useState(false);
+  const [returningBooking, setReturningBooking] = useState<Booking | null>(null);
+  const [returningLookupDone, setReturningLookupDone] = useState(false);
 
   const steps = [
     t("customerInfo"),
+    t("locationInfo"),
     t("carInfo"),
     t("bookingDate")
   ];
@@ -134,9 +140,12 @@ export function BookingForm() {
   }, []);
 
   const upcomingDates = useMemo(() => getUpcomingDateValues(10), []);
+  const activeAreas = settings.areas.filter((area) => area.active);
+  const selectedArea = activeAreas.find((area) => area.id === form.area);
+  const basePrice = selectedArea?.priceEgp ?? settings.servicePriceEgp;
   const appliedPromo = promoCodes.find((promo) => promo.code === form.promoCode.trim().toLowerCase());
-  const promoDiscount = promoDiscountAmount(appliedPromo, settings.servicePriceEgp);
-  const finalPrice = finalPriceFromPromo(appliedPromo, settings.servicePriceEgp);
+  const promoDiscount = promoDiscountAmount(appliedPromo, basePrice);
+  const finalPrice = finalPriceFromPromo(appliedPromo, basePrice);
   const plateNumber = [form.plateLetters.trim(), form.plateDigits.trim()].filter(Boolean).join(" - ");
   const washWindow = language === "ar" ? settings.washWindowAr : settings.washWindow;
 
@@ -147,24 +156,29 @@ export function BookingForm() {
       setOtpToken("");
       setOtpSent(false);
       setOtpDevCode("");
+      setReturningBooking(null);
+      setReturningLookupDone(false);
     }
     if (key === "bookingDate") setLoadingCapacity(true);
+    if (key === "promoCode") setPromoChecked(false);
     setErrors((current) => {
       const next = { ...current };
       delete next[key];
       if (key === "plateLetters" || key === "plateDigits") delete next.plateNumber;
-      if (key === "address" || key === "carLocation") delete next.location;
+      if (key === "buildingNumber") delete next.buildingNumber;
       return next;
     });
   }
 
   function focusFirstError(nextErrors: Record<string, string>, targetStep: number) {
     const fieldOrder = targetStep === 0
-      ? ["customerName", "phoneNumber", "otpCode", "area", "address", "carLocation"]
+      ? ["customerName", "phoneNumber", "otpCode", "consent"]
       : targetStep === 1
-        ? ["carBrand", "carModel", "carColor", "consent"]
-        : ["bookingDate", "promoCode", "washWindowAcknowledged"];
-    const firstKey = fieldOrder.find((key) => nextErrors[key] || (key === "address" && nextErrors.location));
+        ? ["area", "buildingNumber", "address", "carLocation"]
+        : targetStep === 2
+          ? ["carBrand", "carModel", "carYear", "carColor"]
+          : ["bookingDate", "promoCode", "washWindowAcknowledged"];
+    const firstKey = fieldOrder.find((key) => nextErrors[key]);
 
     window.setTimeout(() => {
       const target = firstKey ? document.querySelector<HTMLElement>(`[name="${firstKey}"]`) : document.querySelector<HTMLElement>(".error-text");
@@ -179,16 +193,19 @@ export function BookingForm() {
       if (form.customerName.trim().length < 3) nextErrors.customerName = t("requiredName");
       if (!/^(?:\+20|0020|0)?1[0125]\d{8}$/.test(form.phoneNumber.trim())) nextErrors.phoneNumber = t("requiredPhone");
       if (!otpToken) nextErrors.otp = t("requiredOtp");
-      if (!form.area) nextErrors.area = t("requiredArea");
-      if (form.address.trim().length < 6 && form.carLocation.trim().length < 5) nextErrors.location = t("requiredLocation");
-    }
-    if (targetStep === 1) {
-      if (form.carBrand.trim().length < 2) nextErrors.carBrand = t("requiredBrand");
-      if (!form.carModel.trim()) nextErrors.carModel = t("requiredModel");
-      if (form.carColor.trim().length < 2) nextErrors.carColor = t("requiredColor");
       if (!form.consent) nextErrors.consent = t("requiredConsent");
     }
+    if (targetStep === 1) {
+      if (!form.area) nextErrors.area = t("requiredArea");
+      if (!form.buildingNumber.trim()) nextErrors.buildingNumber = language === "ar" ? "اكتب رقم العمارة." : "Enter the building number.";
+    }
     if (targetStep === 2) {
+      if (form.carBrand.trim().length < 2) nextErrors.carBrand = t("requiredBrand");
+      if (!form.carModel.trim()) nextErrors.carModel = t("requiredModel");
+      if (!/^(19[8-9]\d|20[0-2]\d)$/.test(form.carYear.trim())) nextErrors.carYear = language === "ar" ? "اكتب سنة صنع صحيحة." : "Enter a valid manufacture year.";
+      if (form.carColor.trim().length < 2) nextErrors.carColor = t("requiredColor");
+    }
+    if (targetStep === 3) {
       if (!form.bookingDate) nextErrors.bookingDate = t("requiredDate");
       if (form.promoCode.trim() && !promoCodes.some((promo) => promo.code === form.promoCode.trim().toLowerCase())) nextErrors.promoCode = t("invalidPromo");
       if (!form.washWindowAcknowledged) nextErrors.washWindowAcknowledged = t("requiredAck");
@@ -200,7 +217,9 @@ export function BookingForm() {
   }
 
   function goNext() {
-    if (validateStep()) setStep((current) => Math.min(current + 1, steps.length - 1));
+    if (!validateStep()) return;
+    setStep((current) => Math.min(current + 1, steps.length - 1));
+    scrollBookingTop();
   }
 
   function goBack() {
@@ -221,6 +240,13 @@ export function BookingForm() {
     }
 
     setStep(targetStep);
+    scrollBookingTop();
+  }
+
+  function scrollBookingTop() {
+    window.setTimeout(() => {
+      document.getElementById("booking")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 60);
   }
 
   async function sendOtp() {
@@ -270,9 +296,70 @@ export function BookingForm() {
     }
 
     setOtpToken(payload.token);
+    await lookupReturningBooking();
     setErrors((current) => {
       const next = { ...current };
       delete next.otp;
+      return next;
+    });
+  }
+
+  async function lookupReturningBooking() {
+    setReturningLookupDone(false);
+    try {
+      const response = await fetch(`/api/bookings?query=${encodeURIComponent(form.phoneNumber.trim())}`, { cache: "no-store" });
+      const payload = (await response.json().catch(() => ({}))) as { bookings?: Booking[] };
+      setReturningBooking(payload.bookings?.[0] || null);
+    } finally {
+      setReturningLookupDone(true);
+    }
+  }
+
+  function applyReturningBooking() {
+    if (!returningBooking) return;
+    const { plateLetters, plateDigits } = splitPlateNumber(returningBooking.plateNumber);
+    setForm((current) => ({
+      ...current,
+      customerName: returningBooking.customerName || current.customerName,
+      carBrand: returningBooking.carBrand || current.carBrand,
+      carModel: returningBooking.carModel || current.carModel,
+      carColor: returningBooking.carColor || current.carColor,
+      carYear: returningBooking.carYear || current.carYear,
+      plateLetters,
+      plateDigits,
+      area: returningBooking.area || current.area,
+      address: returningBooking.address || current.address,
+      buildingNumber: returningBooking.buildingNumber || current.buildingNumber,
+      carLocation: returningBooking.carLocation || current.carLocation,
+      notes: current.notes
+    }));
+    setErrors((current) => {
+      const next = { ...current };
+      ["area", "buildingNumber", "carBrand", "carModel", "carYear", "carColor", "plateNumber"].forEach((key) => delete next[key]);
+      return next;
+    });
+  }
+
+  function verifyPromoCode() {
+    const code = form.promoCode.trim().toLowerCase();
+    if (!code) {
+      setErrors((current) => {
+        const next = { ...current };
+        delete next.promoCode;
+        return next;
+      });
+      setPromoChecked(false);
+      return;
+    }
+    if (!promoCodes.some((promo) => promo.code === code)) {
+      setPromoChecked(false);
+      setErrors((current) => ({ ...current, promoCode: t("invalidPromo") }));
+      return;
+    }
+    setPromoChecked(true);
+    setErrors((current) => {
+      const next = { ...current };
+      delete next.promoCode;
       return next;
     });
   }
@@ -299,7 +386,7 @@ export function BookingForm() {
   }
 
   function validateAllSteps() {
-    const checks = [0, 1, 2];
+    const checks = [0, 1, 2, 3];
     for (const item of checks) {
       if (!validateStep(item)) {
         setStep(item);
@@ -326,10 +413,11 @@ export function BookingForm() {
     if (!response.ok || !payload.booking) {
       setErrors(payload.errors || { form: t("genericError") });
       const serverErrors = payload.errors || {};
-      if (serverErrors.customerName || serverErrors.phoneNumber || serverErrors.otp || serverErrors.area || serverErrors.location) setStep(0);
-      else if (serverErrors.carBrand || serverErrors.carModel || serverErrors.carColor || serverErrors.consent) setStep(1);
-      else setStep(2);
-      focusFirstError(serverErrors, serverErrors.customerName || serverErrors.phoneNumber || serverErrors.otp || serverErrors.area || serverErrors.location ? 0 : serverErrors.carBrand || serverErrors.carModel || serverErrors.carColor || serverErrors.consent ? 1 : 2);
+      if (serverErrors.customerName || serverErrors.phoneNumber || serverErrors.otp || serverErrors.consent) setStep(0);
+      else if (serverErrors.area || serverErrors.buildingNumber || serverErrors.address || serverErrors.carLocation) setStep(1);
+      else if (serverErrors.carBrand || serverErrors.carModel || serverErrors.carYear || serverErrors.carColor) setStep(2);
+      else setStep(3);
+      focusFirstError(serverErrors, serverErrors.customerName || serverErrors.phoneNumber || serverErrors.otp || serverErrors.consent ? 0 : serverErrors.area || serverErrors.buildingNumber || serverErrors.address || serverErrors.carLocation ? 1 : serverErrors.carBrand || serverErrors.carModel || serverErrors.carYear || serverErrors.carColor ? 2 : 3);
       return;
     }
 
@@ -345,7 +433,7 @@ export function BookingForm() {
         <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">{t("serviceScope")}</p>
       </div>
 
-      <div className="mb-6 grid grid-cols-3 gap-2">
+      <div className="mb-6 grid grid-cols-4 gap-2">
         {steps.map((item, index) => {
           const locked = index > step + 1;
           return (
@@ -368,9 +456,6 @@ export function BookingForm() {
       <div className="grid gap-4">
         {step === 0 ? (
           <>
-            <Field label={t("fullName")} error={errors.customerName}>
-              <input name="customerName" className={fieldClass(errors.customerName)} value={form.customerName} onChange={(e) => update("customerName", e.target.value)} required />
-            </Field>
             <Field label={t("phoneNumber")} error={errors.phoneNumber}>
               <input
                 name="phoneNumber"
@@ -391,41 +476,66 @@ export function BookingForm() {
                   <span className="label">{t("otpCode")}</span>
                   <input name="otpCode" className={fieldClass(errors.otp)} inputMode="numeric" value={otpCode} onChange={(event) => { setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6)); setOtpToken(""); }} placeholder="123456" />
                 </label>
-                <button type="button" onClick={verifyOtpCode} disabled={otpVerifying || otpCode.length !== 6 || Boolean(otpToken)} className="inline-flex h-12 items-center justify-center rounded-[8px] bg-sky-600 px-4 text-sm font-black text-white disabled:bg-slate-400">
+                <button type="button" onClick={verifyOtpCode} disabled={otpVerifying || otpCode.length !== 6 || Boolean(otpToken)} className={`inline-flex h-12 items-center justify-center rounded-[8px] px-4 text-sm font-black text-white disabled:opacity-90 ${otpToken ? "bg-emerald-500" : "bg-sky-600 disabled:bg-slate-400"}`}>
                   {otpVerifying ? t("checking") : otpToken ? t("otpVerified") : t("verifyOtp")}
                 </button>
               </div>
               {otpDevCode ? <p className="mt-2 text-xs font-black text-sky-700">{t("devOtpCode")}: {otpDevCode}</p> : null}
               {errors.otp ? <p className="error-text">{errors.otp}</p> : null}
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label={t("governorate")}>
-                <input className="field" value={DEFAULT_GOVERNORATE.name[language]} disabled />
-              </Field>
-              <Field label={t("city")}>
-                <input className="field" value={DEFAULT_CITY.name[language]} disabled />
-              </Field>
+            {otpToken && returningLookupDone && returningBooking ? (
+              <div className="rounded-[8px] border border-emerald-200 bg-emerald-50 p-3 text-sm leading-6 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/35 dark:text-emerald-100">
+                <p className="font-black">
+                  {language === "ar" ? "وجدنا حجز سابق بنفس رقم الهاتف." : "We found a previous booking for this phone."}
+                </p>
+                <p className="mt-1 font-bold">
+                  {returningBooking.carBrand} {returningBooking.carModel} - {returningBooking.areaName || returningBooking.area}
+                </p>
+                <button type="button" onClick={applyReturningBooking} className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-[8px] bg-emerald-600 px-4 text-sm font-black text-white">
+                  {language === "ar" ? "استخدم بيانات الحجز السابق" : "Use previous booking details"}
+                </button>
+              </div>
+            ) : null}
+            {otpToken && returningLookupDone && !returningBooking ? (
+              <div className="rounded-[8px] bg-slate-50 p-3 text-xs font-bold text-slate-500 dark:bg-slate-900 dark:text-slate-300">
+                {language === "ar" ? "لا توجد بيانات حجز سابقة لهذا الرقم." : "No previous booking details found for this phone."}
+              </div>
+            ) : null}
+            <Field label={t("fullName")} error={errors.customerName}>
+              <input name="customerName" className={fieldClass(errors.customerName)} value={form.customerName} onChange={(e) => update("customerName", e.target.value)} required />
+            </Field>
+            <label className="flex items-start gap-3 rounded-[8px] bg-white/80 p-3 text-sm leading-6 text-slate-700 dark:bg-slate-900/80 dark:text-slate-200">
+              <input name="consent" type="checkbox" className={`mt-1 h-4 w-4 accent-sky-600 ${errors.consent ? "ring-2 ring-rose-400" : ""}`} checked={form.consent} onChange={(e) => update("consent", e.target.checked)} />
+              <span>{t("consent")}</span>
+            </label>
+            {errors.consent ? <p className="error-text">{errors.consent}</p> : null}
+          </>
+        ) : null}
+
+        {step === 1 ? (
+          <>
+            <div className="rounded-[8px] bg-slate-50 p-3 text-sm font-bold leading-6 text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+              {DEFAULT_GOVERNORATE.name[language]} - {DEFAULT_CITY.name[language]}
             </div>
             <Field label={t("area")} error={errors.area}>
               <select name="area" className={fieldClass(errors.area)} value={form.area} onChange={(e) => update("area", e.target.value)} required>
                 <option value="">{t("chooseArea")}</option>
-                {settings.areas.filter((area) => area.active).map((area) => (
+                {activeAreas.map((area) => (
                   <option key={area.id} value={area.id}>
-                    {language === "ar" ? area.nameAr : area.nameEn}
+                    {language === "ar" ? area.nameAr : area.nameEn} - {area.priceEgp} EGP
                   </option>
                 ))}
               </select>
             </Field>
-            <Alert>{t("locationHelp")}</Alert>
             <div className="grid gap-4 sm:grid-cols-[1fr_150px]">
-              <Field label={t("detailedAddress")} error={errors.location}>
-                <input name="address" className={fieldClass(errors.location)} value={form.address} onChange={(e) => update("address", e.target.value)} />
+              <Field label={language === "ar" ? "اسم الشارع (اختياري)" : "Street name (optional)"}>
+                <input name="address" className="field" value={form.address} onChange={(e) => update("address", e.target.value)} />
               </Field>
-              <Field label={t("buildingNumber")}>
-                <input className="field" value={form.buildingNumber} onChange={(e) => update("buildingNumber", e.target.value)} />
+              <Field label={language === "ar" ? "رقم العمارة" : "Building number"} error={errors.buildingNumber}>
+                <input name="buildingNumber" className={fieldClass(errors.buildingNumber)} value={form.buildingNumber} onChange={(e) => update("buildingNumber", e.target.value)} />
               </Field>
             </div>
-            <Field label={t("carLocation")} error={errors.carLocation}>
+            <Field label={language === "ar" ? "موقع السيارة (اختياري)" : "Car location (optional)"} error={errors.carLocation}>
               <div className="grid gap-2 sm:grid-cols-[auto_1fr]">
                 <button
                   type="button"
@@ -436,13 +546,13 @@ export function BookingForm() {
                   {locationLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
                   {t("useGps")}
                 </button>
-                <input name="carLocation" className={fieldClass(errors.carLocation || errors.location)} placeholder={t("mapsPlaceholder")} value={form.carLocation} onChange={(e) => update("carLocation", e.target.value)} />
+                <input name="carLocation" className={fieldClass(errors.carLocation)} placeholder={t("mapsPlaceholder")} value={form.carLocation} onChange={(e) => update("carLocation", e.target.value)} />
               </div>
             </Field>
           </>
         ) : null}
 
-        {step === 1 ? (
+        {step === 2 ? (
           <>
             <Field label={t("carBrand")} error={errors.carBrand}>
               <input name="carBrand" className={fieldClass(errors.carBrand)} list="car-brands" value={form.carBrand} onChange={(e) => update("carBrand", e.target.value)} required />
@@ -455,6 +565,9 @@ export function BookingForm() {
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label={t("carModel")} error={errors.carModel}>
                 <input name="carModel" className={fieldClass(errors.carModel)} value={form.carModel} onChange={(e) => update("carModel", e.target.value)} required />
+              </Field>
+              <Field label={language === "ar" ? "سنة الصنع" : "Manufacture year"} error={errors.carYear}>
+                <input name="carYear" className={fieldClass(errors.carYear)} inputMode="numeric" placeholder="2022" value={form.carYear} onChange={(e) => update("carYear", e.target.value.replace(/\D/g, "").slice(0, 4))} required />
               </Field>
               <Field label={t("carColor")} error={errors.carColor}>
                 <input name="carColor" className={fieldClass(errors.carColor)} value={form.carColor} onChange={(e) => update("carColor", e.target.value)} required />
@@ -494,20 +607,15 @@ export function BookingForm() {
             <Field label={t("notes")} error={errors.notes}>
               <textarea className="field min-h-28 resize-y" value={form.notes} onChange={(e) => update("notes", e.target.value)} />
             </Field>
-            <label className="flex items-start gap-3 rounded-[8px] bg-white/80 p-3 text-sm leading-6 text-slate-700 dark:bg-slate-900/80 dark:text-slate-200">
-              <input name="consent" type="checkbox" className={`mt-1 h-4 w-4 accent-sky-600 ${errors.consent ? "ring-2 ring-rose-400" : ""}`} checked={form.consent} onChange={(e) => update("consent", e.target.checked)} />
-              <span>{t("consent")}</span>
-            </label>
-            {errors.consent ? <p className="error-text">{errors.consent}</p> : null}
               <input name="website" className="hidden" tabIndex={-1} autoComplete="off" value={form.website} onChange={(e) => update("website", e.target.value)} />
           </>
         ) : null}
 
-        {step === 2 ? (
+        {step === 3 ? (
           <>
             <Field label={`${t("bookingDate")} (${washWindow})`} error={errors.bookingDate}>
               <input name="bookingDate" className={fieldClass(errors.bookingDate)} type="date" min={getTomorrowDateValue()} value={form.bookingDate} onChange={(e) => update("bookingDate", e.target.value)} required />
-              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+              <div className="-mx-1 mt-3 flex gap-2 overflow-x-auto px-1 pb-2 lg:mx-0 lg:grid lg:grid-cols-5 lg:overflow-visible lg:px-0">
                 {upcomingDates.map((date) => {
                   const selected = date === form.bookingDate;
                   const full = selected && capacity?.fullyBooked;
@@ -517,7 +625,7 @@ export function BookingForm() {
                       key={date}
                       disabled={full}
                       onClick={() => update("bookingDate", date)}
-                      className={`min-h-20 rounded-[8px] border p-2 text-start text-xs transition ${
+                      className={`min-h-24 min-w-36 rounded-[8px] border p-2 text-start text-xs transition lg:min-w-0 ${
                         selected ? "border-sky-500 bg-sky-50 text-sky-950 dark:bg-sky-950 dark:text-sky-100" : "border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                       } ${full ? "cursor-not-allowed opacity-50" : ""}`}
                     >
@@ -534,13 +642,25 @@ export function BookingForm() {
               </div>
             </Field>
             <Field label={t("promoCode")} error={errors.promoCode}>
-              <input name="promoCode" className={fieldClass(errors.promoCode)} value={form.promoCode} onChange={(e) => update("promoCode", e.target.value)} />
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                <input name="promoCode" className={fieldClass(errors.promoCode)} value={form.promoCode} onChange={(e) => update("promoCode", e.target.value)} />
+                <button type="button" onClick={verifyPromoCode} className="inline-flex h-12 items-center justify-center rounded-[8px] bg-slate-950 px-4 text-sm font-black text-white dark:bg-white dark:text-slate-950">
+                  {language === "ar" ? "تحقق" : "Check"}
+                </button>
+              </div>
+              {promoChecked && appliedPromo ? <span className="mt-2 block text-xs font-black text-emerald-600">{appliedPromo.label} - {promoDisplayValue(appliedPromo)}</span> : null}
             </Field>
             <div className="rounded-[8px] border border-sky-200 bg-sky-50 p-4 text-slate-950 dark:border-sky-900 dark:bg-sky-950/35 dark:text-sky-100">
               <div className="flex items-center justify-between gap-3 text-sm">
                 <span className="font-bold text-slate-600 dark:text-slate-300">{t("servicePrice")}</span>
-                <span className="font-black">{settings.servicePriceEgp} EGP</span>
+                <span className="font-black">{basePrice} EGP</span>
               </div>
+              {selectedArea ? (
+                <div className="mt-2 flex items-center justify-between gap-3 text-xs font-bold text-slate-500 dark:text-slate-300">
+                  <span>{t("area")}</span>
+                  <span>{language === "ar" ? selectedArea.nameAr : selectedArea.nameEn}</span>
+                </div>
+              ) : null}
               {appliedPromo ? (
                 <div className="mt-2 flex items-center justify-between gap-3 text-sm">
                   <span className="font-bold text-emerald-700 dark:text-emerald-300">{t("promoDiscount")}</span>
@@ -564,7 +684,24 @@ export function BookingForm() {
           </>
         ) : null}
 
-        <div className="mt-2 flex gap-3">
+        <div className="sticky bottom-2 z-10 mt-2 rounded-[8px] border border-slate-200 bg-white/95 p-2 shadow-xl backdrop-blur dark:border-slate-700 dark:bg-slate-950/95 lg:static lg:shadow-sm">
+          <div className="mb-2 grid grid-cols-3 gap-2 rounded-[8px] bg-slate-50 p-2 text-xs dark:bg-slate-900">
+            <div>
+              <span className="block font-bold text-slate-500">{t("area")}</span>
+              <span className="block truncate font-black text-slate-950 dark:text-white">{selectedArea ? (language === "ar" ? selectedArea.nameAr : selectedArea.nameEn) : "-"}</span>
+            </div>
+            <div>
+              <span className="block font-bold text-slate-500">{t("bookingDate")}</span>
+              <span className="block truncate font-black text-slate-950 dark:text-white">
+                {step >= 3 && form.bookingDate ? formatDisplayDate(form.bookingDate, language) : "-"}
+              </span>
+            </div>
+            <div>
+              <span className="block font-bold text-slate-500">{t("finalPrice")}</span>
+              <span className="block truncate font-black text-sky-700 dark:text-sky-300">{finalPrice} EGP</span>
+            </div>
+          </div>
+          <div className="flex gap-3">
           {step > 0 ? (
             <button type="button" onClick={goBack} className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-[8px] bg-slate-200 px-4 text-sm font-black text-slate-950 dark:bg-slate-800 dark:text-white">
               {dir === "rtl" ? <ArrowRight className="h-4 w-4" /> : <ArrowLeft className="h-4 w-4" />}
@@ -582,6 +719,7 @@ export function BookingForm() {
               {t("submit")}
             </button>
           )}
+          </div>
         </div>
       </div>
     </form>
@@ -616,4 +754,12 @@ function normalizePlateLetters(value: string) {
     .slice(0, 4)
     .split("")
     .join(" ");
+}
+
+function splitPlateNumber(value?: string) {
+  const [letters = "", digits = ""] = (value || "").split(" - ");
+  return {
+    plateLetters: normalizePlateLetters(letters),
+    plateDigits: digits.replace(/\D/g, "").slice(0, 6)
+  };
 }
