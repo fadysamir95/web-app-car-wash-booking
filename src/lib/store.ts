@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { DEFAULT_SERVICE, PROMO_CODES, SERVICE_CONFIG } from "./constants";
+import { finalPriceFromPromo } from "./pricing";
 import type { Booking, BookingCapacity, BookingInput, PromoCode } from "./types";
 
 const dataDir = path.join(process.cwd(), "data");
@@ -154,7 +155,7 @@ export async function createBooking(input: BookingInput) {
   }
 
   const appliedPromo = input.promoCode ? activePromoCodes(promoCodes).find((promo) => promo.code === input.promoCode) : null;
-  const finalPrice = Math.max(DEFAULT_SERVICE.priceEgp - (appliedPromo?.discountEgp || 0), 0);
+  const finalPrice = finalPriceFromPromo(appliedPromo);
   const isFreeBooking = finalPrice === 0;
   const createdAt = new Date();
   const expiresAt = new Date(createdAt.getTime() + pendingBookingExpiryMs);
@@ -191,7 +192,7 @@ function createBookingReference() {
 }
 
 function defaultPromoCodes(): PromoCode[] {
-  return PROMO_CODES.map((promo) => ({ ...promo, active: true }));
+  return PROMO_CODES.map((promo) => ({ ...promo, discountType: "amount" as const, active: true }));
 }
 
 export function activePromoCodes(promos: PromoCode[]) {

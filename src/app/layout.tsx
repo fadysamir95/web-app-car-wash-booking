@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { LanguageProvider } from "@/components/language-provider";
+import { PwaRegister } from "@/components/pwa-register";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -12,6 +13,7 @@ export const metadata: Metadata = {
     shortcut: "/favicon.svg",
     apple: "/favicon.svg"
   },
+  manifest: "/manifest.webmanifest",
   openGraph: {
     title: "Car Wash Booking",
     description: "Book your car wash from 12 AM to 5 AM in supported New October City areas.",
@@ -33,7 +35,10 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        <LanguageProvider>{children}</LanguageProvider>
+        <LanguageProvider>
+          {children}
+          <PwaRegister />
+        </LanguageProvider>
       </body>
     </html>
   );

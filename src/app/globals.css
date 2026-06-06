@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap");
 @import "tailwindcss";
 
 :root {
@@ -28,11 +29,13 @@ body {
     radial-gradient(circle at top left, rgba(21, 155, 255, 0.16), transparent 34rem),
     linear-gradient(180deg, #f7fbff 0%, #ffffff 48%, #eef7ff 100%);
   color: var(--foreground);
-  font-family: Arial, "Tahoma", "Segoe UI", sans-serif;
+  font-family: "Inter", Arial, "Segoe UI", sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
 html[lang="ar"] body {
-  font-family: "Tahoma", "Arial", "Segoe UI", sans-serif;
+  font-family: "Cairo", "Tahoma", "Arial", sans-serif;
 }
 
 button,
@@ -85,6 +88,10 @@ select {
   border-color: #0785e8;
   box-shadow: 0 0 0 4px rgba(7, 133, 232, 0.14);
   background: #ffffff;
+}
+
+::selection {
+  background: rgba(14, 165, 233, 0.24);
 }
 
 .field-error {

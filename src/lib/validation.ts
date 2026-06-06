@@ -27,7 +27,7 @@ export function normalizePhone(value: string) {
   return digits;
 }
 
-export function validateBookingInput(raw: unknown, promoCodes: readonly PromoCode[] = PROMO_CODES.map((promo) => ({ ...promo, active: true }))): ValidationResult<BookingInput> {
+export function validateBookingInput(raw: unknown, promoCodes: readonly PromoCode[] = PROMO_CODES.map((promo) => ({ ...promo, discountType: "amount", active: true }))): ValidationResult<BookingInput> {
   const source = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
   const errors: Record<string, string> = {};
   const customerName = normalizeString(source.customerName);

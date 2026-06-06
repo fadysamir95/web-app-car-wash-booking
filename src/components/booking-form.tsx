@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { DEFAULT_CITY, DEFAULT_GOVERNORATE, DEFAULT_SERVICE, PROMO_CODES, SERVICE_AREAS, SERVICE_CONFIG } from "@/lib/constants";
 import { formatDisplayDate, getTomorrowDateValue, getUpcomingDateValues } from "@/lib/date";
+import { finalPriceFromPromo, promoDiscountAmount, promoDisplayValue } from "@/lib/pricing";
 import type { Booking, BookingCapacity, PromoCode } from "@/lib/types";
 import { useLanguage } from "./language-provider";
 
@@ -65,7 +66,13 @@ export function BookingForm() {
   const [loadingCapacity, setLoadingCapacity] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
-  const [promoCodes, setPromoCodes] = useState<PromoCode[]>(PROMO_CODES.map((promo) => ({ ...promo, active: true })));
+  const [promoCodes, setPromoCodes] = useState<PromoCode[]>(PROMO_CODES.map((promo) => ({ ...promo, discountType: "amount", active: true })));
+  const [otpCode, setOtpCode] = useState("");
+  const [otpToken, setOtpToken] = useState("");
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpDevCode, setOtpDevCode] = useState("");
 
   const steps = [
     t("customerInfo"),
@@ -107,12 +114,18 @@ export function BookingForm() {
 
   const upcomingDates = useMemo(() => getUpcomingDateValues(10), []);
   const appliedPromo = promoCodes.find((promo) => promo.code === form.promoCode.trim().toLowerCase());
-  const promoDiscount = appliedPromo ? appliedPromo.discountEgp : 0;
-  const finalPrice = Math.max(DEFAULT_SERVICE.priceEgp - promoDiscount, 0);
+  const promoDiscount = promoDiscountAmount(appliedPromo);
+  const finalPrice = finalPriceFromPromo(appliedPromo);
   const plateNumber = [form.plateLetters.trim(), form.plateDigits.trim()].filter(Boolean).join(" - ");
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
+    if (key === "phoneNumber") {
+      setOtpCode("");
+      setOtpToken("");
+      setOtpSent(false);
+      setOtpDevCode("");
+    }
     if (key === "bookingDate") setLoadingCapacity(true);
     setErrors((current) => {
       const next = { ...current };
@@ -125,7 +138,7 @@ export function BookingForm() {
 
   function focusFirstError(nextErrors: Record<string, string>, targetStep: number) {
     const fieldOrder = targetStep === 0
-      ? ["customerName", "phoneNumber", "area", "address", "carLocation"]
+      ? ["customerName", "phoneNumber", "otpCode", "area", "address", "carLocation"]
       : targetStep === 1
         ? ["carBrand", "carModel", "carColor", "consent"]
         : ["bookingDate", "promoCode", "washWindowAcknowledged"];
@@ -143,6 +156,7 @@ export function BookingForm() {
     if (targetStep === 0) {
       if (form.customerName.trim().length < 3) nextErrors.customerName = t("requiredName");
       if (!/^(?:\+20|0020|0)?1[0125]\d{8}$/.test(form.phoneNumber.trim())) nextErrors.phoneNumber = t("requiredPhone");
+      if (!otpToken) nextErrors.otp = t("requiredOtp");
       if (!form.area) nextErrors.area = t("requiredArea");
       if (form.address.trim().length < 6 && form.carLocation.trim().length < 5) nextErrors.location = t("requiredLocation");
     }
@@ -169,6 +183,60 @@ export function BookingForm() {
 
   function goBack() {
     setStep((current) => Math.max(current - 1, 0));
+  }
+
+  async function sendOtp() {
+    if (!/^(?:\+20|0020|0)?1[0125]\d{8}$/.test(form.phoneNumber.trim())) {
+      setErrors((current) => ({ ...current, phoneNumber: t("requiredPhone") }));
+      return;
+    }
+
+    setOtpSending(true);
+    setErrors((current) => {
+      const next = { ...current };
+      delete next.otp;
+      return next;
+    });
+
+    const response = await fetch("/api/otp/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phoneNumber: form.phoneNumber })
+    });
+    const payload = (await response.json().catch(() => ({}))) as { devCode?: string };
+    setOtpSending(false);
+
+    if (!response.ok) {
+      setErrors((current) => ({ ...current, otp: t("genericError") }));
+      return;
+    }
+
+    setOtpSent(true);
+    setOtpDevCode(payload.devCode || "");
+  }
+
+  async function verifyOtpCode() {
+    setOtpVerifying(true);
+    const response = await fetch("/api/otp/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phoneNumber: form.phoneNumber, code: otpCode })
+    });
+    const payload = (await response.json().catch(() => ({}))) as { token?: string };
+    setOtpVerifying(false);
+
+    if (!response.ok || !payload.token) {
+      setOtpToken("");
+      setErrors((current) => ({ ...current, otp: t("invalidOtp") }));
+      return;
+    }
+
+    setOtpToken(payload.token);
+    setErrors((current) => {
+      const next = { ...current };
+      delete next.otp;
+      return next;
+    });
   }
 
   function useCurrentLocation() {
@@ -212,7 +280,7 @@ export function BookingForm() {
     const response = await fetch("/api/bookings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, plateNumber, sourceLanguage: language })
+      body: JSON.stringify({ ...form, plateNumber, sourceLanguage: language, otpToken })
     });
     const payload = (await response.json()) as { booking?: Booking; errors?: Record<string, string> };
 
@@ -220,10 +288,10 @@ export function BookingForm() {
     if (!response.ok || !payload.booking) {
       setErrors(payload.errors || { form: t("genericError") });
       const serverErrors = payload.errors || {};
-      if (serverErrors.customerName || serverErrors.phoneNumber || serverErrors.area || serverErrors.location) setStep(0);
+      if (serverErrors.customerName || serverErrors.phoneNumber || serverErrors.otp || serverErrors.area || serverErrors.location) setStep(0);
       else if (serverErrors.carBrand || serverErrors.carModel || serverErrors.carColor || serverErrors.consent) setStep(1);
       else setStep(2);
-      focusFirstError(serverErrors, serverErrors.customerName || serverErrors.phoneNumber || serverErrors.area || serverErrors.location ? 0 : serverErrors.carBrand || serverErrors.carModel || serverErrors.carColor || serverErrors.consent ? 1 : 2);
+      focusFirstError(serverErrors, serverErrors.customerName || serverErrors.phoneNumber || serverErrors.otp || serverErrors.area || serverErrors.location ? 0 : serverErrors.carBrand || serverErrors.carModel || serverErrors.carColor || serverErrors.consent ? 1 : 2);
       return;
     }
 
@@ -267,6 +335,22 @@ export function BookingForm() {
                 required
               />
             </Field>
+            <div className="rounded-[8px] border border-slate-200 bg-white/75 p-3 dark:border-slate-700 dark:bg-slate-900/75">
+              <div className="grid gap-2 sm:grid-cols-[auto_1fr_auto] sm:items-end">
+                <button type="button" onClick={sendOtp} disabled={otpSending || !form.phoneNumber.trim()} className="inline-flex h-12 items-center justify-center rounded-[8px] bg-slate-950 px-4 text-sm font-black text-white disabled:opacity-60 dark:bg-white dark:text-slate-950">
+                  {otpSending ? t("sendingOtp") : otpSent ? t("resendOtp") : t("sendOtp")}
+                </button>
+                <label>
+                  <span className="label">{t("otpCode")}</span>
+                  <input name="otpCode" className={fieldClass(errors.otp)} inputMode="numeric" value={otpCode} onChange={(event) => { setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6)); setOtpToken(""); }} placeholder="123456" />
+                </label>
+                <button type="button" onClick={verifyOtpCode} disabled={otpVerifying || otpCode.length !== 6 || Boolean(otpToken)} className="inline-flex h-12 items-center justify-center rounded-[8px] bg-sky-600 px-4 text-sm font-black text-white disabled:bg-slate-400">
+                  {otpVerifying ? t("checking") : otpToken ? t("otpVerified") : t("verifyOtp")}
+                </button>
+              </div>
+              {otpDevCode ? <p className="mt-2 text-xs font-black text-sky-700">{t("devOtpCode")}: {otpDevCode}</p> : null}
+              {errors.otp ? <p className="error-text">{errors.otp}</p> : null}
+            </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label={t("governorate")}>
                 <input className="field" value={DEFAULT_GOVERNORATE.name[language]} disabled />
@@ -413,7 +497,7 @@ export function BookingForm() {
               {appliedPromo ? (
                 <div className="mt-2 flex items-center justify-between gap-3 text-sm">
                   <span className="font-bold text-emerald-700 dark:text-emerald-300">{t("promoDiscount")}</span>
-                  <span className="font-black text-emerald-700 dark:text-emerald-300">-{promoDiscount} EGP</span>
+                  <span className="font-black text-emerald-700 dark:text-emerald-300">-{promoDisplayValue(appliedPromo)} ({promoDiscount} EGP)</span>
                 </div>
               ) : null}
               <div className="mt-3 flex items-center justify-between gap-3 border-t border-sky-200 pt-3 dark:border-sky-900">

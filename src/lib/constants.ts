@@ -53,3 +53,4 @@ export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 export type ServiceArea = (typeof SERVICE_AREAS)[number]["id"];
 
 export const ADMIN_SESSION_COOKIE = "carwash_admin";
+export const WORKER_SESSION_COOKIE = "carwash_worker";

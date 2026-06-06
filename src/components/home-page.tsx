@@ -8,6 +8,7 @@ import { ArrowRight, Clock, Loader2, MapPin, MessageCircle, Search, ShieldCheck,
 import { BookingForm } from "@/components/booking-form";
 import { DEFAULT_SERVICE, PROMO_CODES, SERVICE_AREAS, SERVICE_CONFIG } from "@/lib/constants";
 import { formatDisplayDate } from "@/lib/date";
+import { bookingFinalPrice } from "@/lib/pricing";
 import type { Booking } from "@/lib/types";
 import { useLanguage } from "./language-provider";
 import { LanguageSwitcher } from "./language-switcher";
@@ -146,11 +147,7 @@ function MyBookings() {
 
 function BookingLookupCard({ booking, language }: { booking: Booking; language: "en" | "ar" }) {
   const { t } = useLanguage();
-  const finalPrice = useMemo(() => {
-    if (typeof booking.finalPriceEgp === "number") return booking.finalPriceEgp;
-    const promo = booking.promoCode ? PROMO_CODES.find((item) => item.code === booking.promoCode) : null;
-    return Math.max(DEFAULT_SERVICE.priceEgp - (promo?.discountEgp || 0), 0);
-  }, [booking.finalPriceEgp, booking.promoCode]);
+  const finalPrice = bookingFinalPrice(booking, PROMO_CODES.map((promo) => ({ ...promo, discountType: "amount", active: true })));
   const whatsAppUrl = useMemo(() => {
     const message =
       language === "ar"

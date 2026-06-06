@@ -10,7 +10,9 @@ export type BookingTimelineEvent = {
 export type PromoCode = {
   code: string;
   type: "fixed" | "free_wash";
+  discountType?: "amount" | "percentage";
   discountEgp: number;
+  discountPercent?: number;
   label: string;
   active: boolean;
   maxUses?: number;

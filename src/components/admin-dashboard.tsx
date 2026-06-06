@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AlertTriangle, BarChart3, Bell, Check, Download, ExternalLink, LogOut, Pencil, Save, Search, Send, Smartphone, Trash2, Users, X } from "lucide-react";
 import { BOOKING_STATUSES, DEFAULT_SERVICE, PROMO_CODES, SERVICE_AREAS, SERVICE_CONFIG } from "@/lib/constants";
 import { formatDisplayDate } from "@/lib/date";
+import { bookingFinalPrice as calculateBookingFinalPrice, promoDisplayValue } from "@/lib/pricing";
 import type { Booking, CustomerSummary, PromoCode } from "@/lib/types";
 import type { TranslationKey } from "@/lib/i18n";
 import { useLanguage } from "./language-provider";
@@ -36,8 +37,8 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
   const [toast, setToast] = useState("");
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [analyticsNow, setAnalyticsNow] = useState("");
-  const [promos, setPromos] = useState<PromoCode[]>(PROMO_CODES.map((promo) => ({ ...promo, active: true })));
-  const [promoForm, setPromoForm] = useState({ code: "", label: "", discountEgp: "25", expiresAt: "" });
+  const [promos, setPromos] = useState<PromoCode[]>(PROMO_CODES.map((promo) => ({ ...promo, discountType: "amount", active: true })));
+  const [promoForm, setPromoForm] = useState({ code: "", label: "", discountType: "amount", discountValue: "25", expiresAt: "" });
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">("unsupported");
   const knownBookingIds = useRef(new Set(initialBookings.map((booking) => booking.id)));
 
@@ -255,7 +256,9 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
       body: JSON.stringify({
         code: promoForm.code,
         label: promoForm.label || promoForm.code,
-        discountEgp: Number(promoForm.discountEgp || 0),
+        discountType: promoForm.discountType,
+        discountEgp: promoForm.discountType === "amount" ? Number(promoForm.discountValue || 0) : 0,
+        discountPercent: promoForm.discountType === "percentage" ? Number(promoForm.discountValue || 0) : undefined,
         expiresAt: promoForm.expiresAt ? `${promoForm.expiresAt}T23:59:59.999Z` : undefined,
         active: true
       })
@@ -263,7 +266,7 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
     if (!response.ok) return;
     const payload = (await response.json()) as { promos: PromoCode[] };
     setPromos(payload.promos);
-    setPromoForm({ code: "", label: "", discountEgp: "25", expiresAt: "" });
+    setPromoForm({ code: "", label: "", discountType: "amount", discountValue: "25", expiresAt: "" });
   }
 
   async function deletePromo(code: string) {
@@ -390,11 +393,11 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
               <ExternalLink className="h-4 w-4" />
               View Website
             </Link>
-            <Link href="/worker" className="inline-flex h-10 items-center justify-center gap-2 rounded-[8px] bg-white px-4 text-sm font-black text-slate-700 shadow-sm dark:bg-slate-900 dark:text-slate-200">
+            <Link href="/worker" target="_blank" rel="noreferrer" className="inline-flex h-10 items-center justify-center gap-2 rounded-[8px] bg-white px-4 text-sm font-black text-slate-700 shadow-sm dark:bg-slate-900 dark:text-slate-200">
               <ExternalLink className="h-4 w-4" />
               {t("workerBoard")}
             </Link>
-            <LanguageSwitcher />
+            <LanguageSwitcher variant="surface" />
             <button type="button" onClick={logout} className="inline-flex h-10 items-center justify-center gap-2 rounded-[8px] bg-slate-950 px-4 text-sm font-black text-white dark:bg-white dark:text-slate-950">
               <LogOut className="h-4 w-4" />
               {t("logout")}
@@ -439,7 +442,7 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
           ) : null}
         </div>
 
-        <nav className="mt-5 grid gap-2 rounded-[8px] bg-white p-2 shadow-sm dark:bg-slate-900 sm:grid-cols-3 xl:grid-cols-8">
+        <nav className="mt-5 grid gap-2 rounded-[8px] bg-white p-2 shadow-sm dark:bg-slate-900 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8">
           <TabButton active={tab === "customers"} onClick={() => setTab("customers")} icon={<Users className="h-4 w-4" />} label={t("customers")} value={customers.length} />
           <TabButton active={tab === "allBookings"} onClick={() => setTab("allBookings")} icon={<Check className="h-4 w-4" />} label={t("allBookings")} value={bookings.length} />
           <TabButton active={tab === "pendingBookings"} onClick={() => setTab("pendingBookings")} icon={<Bell className="h-4 w-4" />} label={t("pendingBookings")} value={pendingBookings} />
@@ -595,8 +598,15 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
                   <input className="field" value={promoForm.label} onChange={(event) => setPromoForm({ ...promoForm, label: event.target.value })} />
                 </label>
                 <label>
+                  <span className="label">{t("promoDiscountType")}</span>
+                  <select className="field" value={promoForm.discountType} onChange={(event) => setPromoForm({ ...promoForm, discountType: event.target.value })}>
+                    <option value="amount">{t("fixedAmount")}</option>
+                    <option value="percentage">{t("percentage")}</option>
+                  </select>
+                </label>
+                <label>
                   <span className="label">{t("promoDiscount")}</span>
-                  <input className="field" inputMode="numeric" value={promoForm.discountEgp} onChange={(event) => setPromoForm({ ...promoForm, discountEgp: event.target.value.replace(/\D/g, "") })} />
+                  <input className="field" inputMode="numeric" value={promoForm.discountValue} onChange={(event) => setPromoForm({ ...promoForm, discountValue: event.target.value.replace(/\D/g, "") })} />
                 </label>
                 <label>
                   <span className="label">{t("promoExpiry")}</span>
@@ -614,7 +624,7 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
                   <div key={promo.code} className="flex flex-wrap items-center justify-between gap-3 rounded-[8px] bg-slate-50 p-3 text-sm dark:bg-slate-800">
                     <div>
                       <p className="font-black text-slate-950 dark:text-white">{promo.code}</p>
-                      <p className="mt-1 font-bold text-slate-500">{promo.label} - {promo.discountEgp} EGP</p>
+                      <p className="mt-1 font-bold text-slate-500">{promo.label} - {promoDisplayValue(promo)}</p>
                     </div>
                     <button type="button" onClick={() => deletePromo(promo.code)} className="inline-flex h-9 items-center gap-1 rounded-[8px] bg-rose-600 px-3 text-xs font-black text-white">
                       <Trash2 className="h-3.5 w-3.5" />
@@ -880,14 +890,14 @@ function TabButton({ active, onClick, icon, label, value }: { active: boolean; o
     <button
       type="button"
       onClick={onClick}
-      className={`flex min-h-20 items-center justify-between gap-3 rounded-[8px] px-4 text-start transition ${
+      className={`flex min-h-24 items-center justify-between gap-3 rounded-[8px] px-4 text-start transition ${
         active ? "bg-sky-600 text-white shadow-sm" : "bg-slate-50 text-slate-700 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
       }`}
     >
       <span className="min-w-0">
-        <span className="flex items-center gap-2 text-sm font-black">
+        <span className="flex items-start gap-2 text-sm font-black leading-5">
           {icon}
-          <span className="truncate">{label}</span>
+          <span className="whitespace-normal break-words">{label}</span>
         </span>
         <span className="mt-2 block text-2xl font-black">{value}</span>
       </span>
@@ -947,9 +957,7 @@ function areaLabel(areaId: string, language: "en" | "ar") {
 }
 
 function bookingFinalPrice(booking: Booking) {
-  if (typeof booking.finalPriceEgp === "number") return booking.finalPriceEgp;
-  const promo = booking.promoCode ? PROMO_CODES.find((item) => item.code === booking.promoCode) : null;
-  return Math.max(DEFAULT_SERVICE.priceEgp - (promo?.discountEgp || 0), 0);
+  return calculateBookingFinalPrice(booking, PROMO_CODES.map((promo) => ({ ...promo, discountType: "amount", active: true })));
 }
 
 function revenueSince(bookings: Booking[], dateValue: string) {

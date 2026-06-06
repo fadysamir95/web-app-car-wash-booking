@@ -2,9 +2,10 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Clock, MessageCircle, Search } from "lucide-react";
-import { DEFAULT_SERVICE, PROMO_CODES, SERVICE_CONFIG } from "@/lib/constants";
+import { ArrowLeft, Clock, MessageCircle, Search } from "lucide-react";
+import { PROMO_CODES, SERVICE_CONFIG } from "@/lib/constants";
 import { formatDisplayDate } from "@/lib/date";
+import { bookingFinalPrice } from "@/lib/pricing";
 import type { Booking } from "@/lib/types";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { useLanguage } from "@/components/language-provider";
@@ -35,7 +36,13 @@ export default function MyBookingPage() {
       <div className="mx-auto max-w-3xl">
         <header className="mb-5 flex items-center justify-between">
           <Link href="/" className="text-sm font-black text-slate-950 dark:text-white">{t("brand")}</Link>
-          <LanguageSwitcher />
+          <div className="flex items-center gap-2">
+            <Link href="/" className="inline-flex h-10 items-center gap-2 rounded-[8px] bg-white px-3 text-sm font-black text-slate-700 shadow-sm dark:bg-slate-900 dark:text-slate-200">
+              <ArrowLeft className="h-4 w-4 rtl:rotate-180" />
+              {t("backToHome")}
+            </Link>
+            <LanguageSwitcher />
+          </div>
         </header>
 
         <section className="rounded-[8px] bg-white p-4 shadow-sm dark:bg-slate-900 sm:p-6">
@@ -62,11 +69,7 @@ export default function MyBookingPage() {
 function BookingDetails({ booking, language }: { booking: Booking; language: "en" | "ar" }) {
   const { t } = useLanguage();
   const [now, setNow] = useState(0);
-  const finalPrice = useMemo(() => {
-    if (typeof booking.finalPriceEgp === "number") return booking.finalPriceEgp;
-    const promo = booking.promoCode ? PROMO_CODES.find((item) => item.code === booking.promoCode) : null;
-    return Math.max(DEFAULT_SERVICE.priceEgp - (promo?.discountEgp || 0), 0);
-  }, [booking.finalPriceEgp, booking.promoCode]);
+  const finalPrice = bookingFinalPrice(booking, PROMO_CODES.map((promo) => ({ ...promo, discountType: "amount", active: true })));
   const expiresAt = booking.expiresAt ? new Date(booking.expiresAt).getTime() : null;
   const remainingMs = expiresAt && now > 0 ? Math.max(expiresAt - now, 0) : null;
   const canPay = finalPrice > 0 && booking.bookingStatus === "Pending" && remainingMs !== 0;

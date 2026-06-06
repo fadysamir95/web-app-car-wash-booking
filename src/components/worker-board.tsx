@@ -1,8 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
-import { Check, ExternalLink, MapPin, MessageCircle } from "lucide-react";
+import { Check, LogOut, MapPin } from "lucide-react";
 import type { Booking } from "@/lib/types";
 import { formatDisplayDate } from "@/lib/date";
 import { useLanguage } from "./language-provider";
@@ -20,14 +19,15 @@ export function WorkerBoard({ initialBookings }: { initialBookings: Booking[] })
   );
 
   async function markWashed(booking: Booking) {
-    const response = await fetch(`/api/admin/bookings/${booking.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bookingStatus: "Completed" })
-    });
+    const response = await fetch(`/api/worker/bookings/${booking.id}/complete`, { method: "POST" });
     if (!response.ok) return;
     const payload = (await response.json()) as { booking: Booking };
     setBookings((current) => current.map((item) => (item.id === booking.id ? payload.booking : item)));
+  }
+
+  async function logout() {
+    await fetch("/api/worker/logout", { method: "POST" });
+    window.location.reload();
   }
 
   return (
@@ -39,11 +39,11 @@ export function WorkerBoard({ initialBookings }: { initialBookings: Booking[] })
             <h1 className="text-3xl font-black text-slate-950 dark:text-white">{t("workerBoard")}</h1>
           </div>
           <div className="flex gap-2">
-            <Link href="/admin" className="inline-flex h-10 items-center gap-2 rounded-[8px] bg-slate-950 px-4 text-sm font-black text-white dark:bg-white dark:text-slate-950">
-              <ExternalLink className="h-4 w-4" />
-              {t("adminDashboard")}
-            </Link>
-            <LanguageSwitcher />
+            <LanguageSwitcher variant="surface" />
+            <button type="button" onClick={logout} className="inline-flex h-10 items-center gap-2 rounded-[8px] bg-slate-950 px-4 text-sm font-black text-white dark:bg-white dark:text-slate-950">
+              <LogOut className="h-4 w-4" />
+              {t("logout")}
+            </button>
           </div>
         </header>
 
@@ -55,7 +55,6 @@ export function WorkerBoard({ initialBookings }: { initialBookings: Booking[] })
                 <div>
                   <p className="text-xs font-black uppercase text-sky-700">{booking.id}</p>
                   <h2 className="mt-1 text-xl font-black text-slate-950 dark:text-white">{booking.customerName}</h2>
-                  <p className="mt-1 text-sm font-bold text-slate-500">{booking.phoneNumber}</p>
                 </div>
                 <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-black text-sky-800 dark:bg-sky-950 dark:text-sky-200">{formatDisplayDate(booking.bookingDate, language)}</span>
               </div>
@@ -64,17 +63,13 @@ export function WorkerBoard({ initialBookings }: { initialBookings: Booking[] })
                 <p><strong>{t("assignedArea")}:</strong> {booking.areaName || booking.area}</p>
                 <p><strong>{t("detailedAddress")}:</strong> {booking.address || "-"} {booking.buildingNumber ? `, ${booking.buildingNumber}` : ""}</p>
               </div>
-              <div className="mt-4 grid gap-2 sm:grid-cols-3">
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
                 {booking.carLocation ? (
                   <a href={booking.carLocation} target="_blank" rel="noreferrer" className="inline-flex h-11 items-center justify-center gap-2 rounded-[8px] bg-sky-600 px-4 text-sm font-black text-white">
                     <MapPin className="h-4 w-4" />
                     {t("carLocation")}
                   </a>
                 ) : null}
-                <a href={`https://wa.me/20${booking.phoneNumber.replace(/^0/, "")}`} target="_blank" rel="noreferrer" className="inline-flex h-11 items-center justify-center gap-2 rounded-[8px] bg-emerald-500 px-4 text-sm font-black text-white">
-                  <MessageCircle className="h-4 w-4" />
-                  WhatsApp
-                </a>
                 <button type="button" onClick={() => markWashed(booking)} className="inline-flex h-11 items-center justify-center gap-2 rounded-[8px] bg-slate-950 px-4 text-sm font-black text-white dark:bg-white dark:text-slate-950">
                   <Check className="h-4 w-4" />
                   {t("washDone")}

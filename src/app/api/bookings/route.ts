@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { activePromoCodes, createBooking, readBookings, readPromoCodes } from "@/lib/store";
 import { normalizePhone, validateBookingInput } from "@/lib/validation";
+import { consumeOtpToken } from "@/lib/otp";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -34,6 +35,11 @@ export async function POST(request: Request) {
 
   if (!result.ok) {
     return NextResponse.json({ errors: result.errors }, { status: 400 });
+  }
+
+  const otpToken = typeof body === "object" && body !== null && "otpToken" in body ? String((body as { otpToken?: unknown }).otpToken || "") : "";
+  if (!consumeOtpToken(result.data.phoneNumber, otpToken)) {
+    return NextResponse.json({ errors: { otp: "Verify your phone number before booking." } }, { status: 400 });
   }
 
   const created = await createBooking(result.data);

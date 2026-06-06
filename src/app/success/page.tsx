@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, Copy, MessageCircle, WalletCards } from "lucide-react";
-import { DEFAULT_SERVICE, PROMO_CODES, SERVICE_CONFIG } from "@/lib/constants";
+import { PROMO_CODES, SERVICE_CONFIG } from "@/lib/constants";
 import { formatDisplayDate } from "@/lib/date";
+import { finalPriceFromPromo } from "@/lib/pricing";
 import type { Booking } from "@/lib/types";
 import { useLanguage } from "@/components/language-provider";
 import { LanguageSwitcher } from "@/components/language-switcher";
@@ -27,7 +28,7 @@ export default function SuccessPage() {
     return `https://wa.me/2${SERVICE_CONFIG.paymentPhone}?text=${encodeURIComponent(message)}`;
   }, [booking, language]);
   const appliedPromo = booking?.promoCode ? PROMO_CODES.find((promo) => promo.code === booking.promoCode) : null;
-  const servicePrice = booking?.finalPriceEgp ?? Math.max(DEFAULT_SERVICE.priceEgp - (appliedPromo?.discountEgp || 0), 0);
+  const servicePrice = booking?.finalPriceEgp ?? finalPriceFromPromo(appliedPromo ? { ...appliedPromo, active: true } : null);
   const isFreeBooking = servicePrice === 0;
   const remainingMs = booking?.expiresAt && !isFreeBooking && now > 0 ? Math.max(new Date(booking.expiresAt).getTime() - now, 0) : null;
 

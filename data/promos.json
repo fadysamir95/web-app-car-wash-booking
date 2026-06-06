@@ -1,5 +1,31 @@
 [
   {
+    "code": "welcome10",
+    "label": "Welcome",
+    "discountType": "percentage",
+    "discountEgp": 0,
+    "discountPercent": 10,
+    "type": "fixed",
+    "active": true,
+    "expiresAt": "2026-06-30T23:59:59.999Z"
+  },
+  {
+    "code": "ramez20",
+    "label": "Ramez Naaem",
+    "discountEgp": 10,
+    "type": "fixed",
+    "active": true,
+    "expiresAt": "2026-06-30T23:59:59.999Z"
+  },
+  {
+    "code": "fady10",
+    "label": "Fady Samir",
+    "discountEgp": 10,
+    "type": "fixed",
+    "active": true,
+    "expiresAt": "2026-06-30T23:59:59.999Z"
+  },
+  {
     "code": "free-wash",
     "label": "Free Wash",
     "discountEgp": 25,
