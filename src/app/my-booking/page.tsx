@@ -9,6 +9,7 @@ import { bookingFinalPrice } from "@/lib/pricing";
 import type { Booking } from "@/lib/types";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { useLanguage } from "@/components/language-provider";
+import { BrandLogo } from "@/components/brand-logo";
 
 export default function MyBookingPage() {
   const { language, dir, t } = useLanguage();
@@ -57,7 +58,7 @@ export default function MyBookingPage() {
     <main className="min-h-svh bg-slate-100 px-4 py-5 dark:bg-slate-950" dir={dir}>
       <div className="mx-auto max-w-3xl">
         <header className="mb-5 flex items-center justify-between">
-          <Link href="/" className="text-sm font-black text-slate-950 dark:text-white">{t("brand")}</Link>
+          <Link href="/" aria-label="VAYAX home"><BrandLogo compact size="lg" bare /></Link>
           <div className="flex items-center gap-2">
             <Link href="/" className="inline-flex h-10 items-center gap-2 rounded-[8px] bg-white px-3 text-sm font-black text-slate-700 shadow-sm dark:bg-slate-900 dark:text-slate-200">
               <ArrowLeft className="h-4 w-4 rtl:rotate-180" />
@@ -110,6 +111,11 @@ function BookingDetails({ booking, language }: { booking: Booking; language: "en
   const finalPrice = bookingFinalPrice(currentBooking, PROMO_CODES.map((promo) => ({ ...promo, discountType: "amount", active: true })));
   const expiresAt = currentBooking.expiresAt ? new Date(currentBooking.expiresAt).getTime() : null;
   const remainingMs = expiresAt && now > 0 ? Math.max(expiresAt - now, 0) : null;
+  const paymentWindowMs =
+    expiresAt && currentBooking.createdAt
+      ? Math.max(expiresAt - new Date(currentBooking.createdAt).getTime(), 1)
+      : 1;
+  const paymentProgress = remainingMs === null ? 100 : Math.max(0, Math.min(100, (remainingMs / paymentWindowMs) * 100));
   const isPendingPaidBooking = finalPrice > 0 && currentBooking.bookingStatus === "Pending";
   const countdownReady = !expiresAt || now > 0;
   const hasActiveCountdown = Boolean(remainingMs && remainingMs > 0);
@@ -141,7 +147,7 @@ function BookingDetails({ booking, language }: { booking: Booking; language: "en
           <h2 className="mt-1 text-2xl font-black text-slate-950 dark:text-white">{currentBooking.customerName}</h2>
           <p className="mt-1 text-sm font-bold text-slate-500">{currentBooking.phoneNumber}</p>
         </div>
-        <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-black text-sky-800 dark:bg-sky-950 dark:text-sky-200">{bookingStatusLabel(currentBooking.bookingStatus, language)}</span>
+        <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-black text-sky-800 dark:bg-sky-950 dark:text-sky-200">{displayBookingStatusLabel(currentBooking.bookingStatus, language)}</span>
       </div>
 
       <div className="mt-4 grid gap-3 rounded-[8px] bg-slate-50 p-4 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200 sm:grid-cols-2">
@@ -152,9 +158,17 @@ function BookingDetails({ booking, language }: { booking: Booking; language: "en
       </div>
 
       {remainingMs !== null && currentBooking.bookingStatus === "Pending" ? (
-        <div className="mt-4 flex items-center gap-2 rounded-[8px] border border-amber-300 bg-amber-50 p-3 text-sm font-black text-amber-950 dark:border-amber-900 dark:bg-amber-950/35 dark:text-amber-100">
-          <Clock className="h-4 w-4" />
-          {remainingMs > 0 ? `${t("paymentCountdown")}: ${formatCountdown(remainingMs)}` : t("bookingExpired")}
+        <div className="mt-4 rounded-[8px] border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:border-amber-900 dark:bg-amber-950/35 dark:text-amber-100">
+          <div className="flex items-center justify-between gap-3 text-sm font-black">
+            <span className="inline-flex items-center gap-2">
+              <Clock className="h-4 w-4" />
+              {remainingMs > 0 ? t("paymentCountdown") : t("bookingExpired")}
+            </span>
+            <span>{remainingMs > 0 ? formatCountdown(remainingMs) : "00:00:00"}</span>
+          </div>
+          <div className="mt-3 h-3 overflow-hidden rounded-full bg-amber-100 dark:bg-amber-900/60">
+            <div className="h-full rounded-full bg-amber-500 transition-all" style={{ width: `${paymentProgress}%` }} />
+          </div>
         </div>
       ) : null}
 
@@ -183,9 +197,9 @@ function BookingDetails({ booking, language }: { booking: Booking; language: "en
         <div className="mt-3 grid gap-2">
           {(currentBooking.timeline || []).map((item) => (
             <div key={`${item.status}-${item.createdAt}`} className="rounded-[8px] border border-slate-200 p-3 text-sm dark:border-slate-800">
-              <p className="font-black text-slate-950 dark:text-white">{timelineLabel(item.label, language)}</p>
+              <p className="font-black text-slate-950 dark:text-white">{displayTimelineLabel(item.label, language)}</p>
               <p className="mt-1 text-xs font-bold text-slate-500">{new Intl.DateTimeFormat(language === "ar" ? "ar-EG" : "en-EG", { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}</p>
-              {item.note ? <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{item.note}</p> : null}
+              {item.note ? <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{displayTimelineNote(item.note, language)}</p> : null}
             </div>
           ))}
         </div>
@@ -294,4 +308,59 @@ function timelineLabel(label: string, language: "en" | "ar") {
     "Status changed to Cancelled": "تم تغيير الحالة إلى ملغي"
   };
   return labels[label] || label;
+}
+
+function timelineNote(note: string, language: "en" | "ar") {
+  if (language === "en") return note;
+  const notes: Record<string, string> = {
+    "Awaiting payment confirmation.": "في انتظار تأكيد الدفع.",
+    "Free wash promo applied.": "تم تطبيق بروموكود غسلة مجانية."
+  };
+  return notes[note] || note;
+}
+
+function displayBookingStatusLabel(status: string, language: "en" | "ar") {
+  if (language === "en") return bookingStatusLabel(status, language);
+  const labels: Record<string, string> = {
+    Pending: "معلق",
+    Confirmed: "مؤكد",
+    Completed: "تم الغسيل",
+    Cancelled: "ملغي"
+  };
+  return labels[status] || status;
+}
+
+function displayTimelineLabel(label: string, language: "en" | "ar") {
+  if (language === "en") return label;
+  if (label.startsWith("Current status: ")) {
+    return `الحالة الحالية: ${displayBookingStatusLabel(label.replace("Current status: ", ""), language)}`;
+  }
+
+  const labels: Record<string, string> = {
+    "Booking submitted": "تم إرسال الحجز",
+    "Booking confirmed": "تم تأكيد الحجز",
+    "Auto cancelled": "تم الإلغاء تلقائيًا",
+    "Status changed to Pending": "تم تغيير الحالة إلى معلق",
+    "Status changed to Confirmed": "تم تغيير الحالة إلى مؤكد",
+    "Status changed to Completed": "تم تغيير الحالة إلى تم الغسيل",
+    "Status changed to Cancelled": "تم تغيير الحالة إلى ملغي",
+    "Vehicle washed with proof": "تم تسجيل الغسيل مع صورة إثبات",
+    "Service rated": "تم تقييم الخدمة",
+    "Customer complaint received": "تم استلام شكوى العميل"
+  };
+  return labels[label] || timelineLabel(label, language);
+}
+
+function displayTimelineNote(note: string, language: "en" | "ar") {
+  if (language === "en") return note;
+  if (note.startsWith("Completed by worker ")) {
+    return `تم تنفيذ الغسيل بواسطة العامل ${note.replace("Completed by worker ", "")}`;
+  }
+
+  const notes: Record<string, string> = {
+    "Awaiting payment confirmation.": "في انتظار تأكيد الدفع.",
+    "Free wash promo applied.": "تم تطبيق بروموكود غسلة مجانية.",
+    "Payment was not received within 3 hours.": "لم يتم استلام الدفع خلال 3 ساعات."
+  };
+  return notes[note] || timelineNote(note, language);
 }

@@ -10,9 +10,10 @@ import {
   Upload
 } from "lucide-react";
 import { DEFAULT_CITY, DEFAULT_GOVERNORATE, DEFAULT_SERVICE, PROMO_CODES, SERVICE_AREAS, SERVICE_CONFIG } from "@/lib/constants";
-import { formatDisplayDate, getTomorrowDateValue, getUpcomingDateValues } from "@/lib/date";
+import { formatDisplayDate, getTomorrowDateValue, getUpcomingDateValues, isBookingDateAllowed } from "@/lib/date";
 import { finalPriceFromPromo, promoDiscountAmount, promoDisplayValue } from "@/lib/pricing";
 import type { Booking, BookingCapacity, PromoCode, ServiceSettings } from "@/lib/types";
+import { BurnoutLoader } from "./burnout-loader";
 import { useLanguage } from "./language-provider";
 
 type FormState = {
@@ -25,6 +26,7 @@ type FormState = {
   plateLetters: string;
   plateDigits: string;
   carImageName: string;
+  carImageDataUrl: string;
   area: string;
   address: string;
   buildingNumber: string;
@@ -47,11 +49,12 @@ const initialState: FormState = {
   plateLetters: "",
   plateDigits: "",
   carImageName: "",
+  carImageDataUrl: "",
   area: "",
   address: "",
   buildingNumber: "",
   carLocation: "",
-  bookingDate: getTomorrowDateValue(),
+  bookingDate: "",
   notes: "",
   promoCode: "",
   consent: true,
@@ -65,7 +68,7 @@ export function BookingForm() {
   const [step, setStep] = useState(0);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [capacity, setCapacity] = useState<BookingCapacity | null>(null);
-  const [loadingCapacity, setLoadingCapacity] = useState(true);
+  const [loadingCapacity, setLoadingCapacity] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
   const [promoCodes, setPromoCodes] = useState<PromoCode[]>(PROMO_CODES.map((promo) => ({ ...promo, discountType: "amount", active: true })));
@@ -86,6 +89,8 @@ export function BookingForm() {
   const [promoChecked, setPromoChecked] = useState(false);
   const [returningBookings, setReturningBookings] = useState<Booking[]>([]);
   const [returningLookupDone, setReturningLookupDone] = useState(false);
+  const [selectedPreviousCarKey, setSelectedPreviousCarKey] = useState("");
+  const [bookingClock, setBookingClock] = useState(0);
 
   const steps = [
     t("customerInfo"),
@@ -95,6 +100,7 @@ export function BookingForm() {
   ];
 
   useEffect(() => {
+    if (!form.bookingDate) return;
     let cancelled = false;
     fetch(`/api/capacity?date=${form.bookingDate}`)
       .then((response) => response.json())
@@ -127,6 +133,15 @@ export function BookingForm() {
   }, []);
 
   useEffect(() => {
+    const firstTick = window.setTimeout(() => setBookingClock(Date.now()), 0);
+    const timer = window.setInterval(() => setBookingClock(Date.now()), 60_000);
+    return () => {
+      window.clearTimeout(firstTick);
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     fetch("/api/settings")
       .then((response) => response.json())
@@ -139,7 +154,9 @@ export function BookingForm() {
     };
   }, []);
 
-  const upcomingDates = useMemo(() => getUpcomingDateValues(10), []);
+  const bookingNow = useMemo(() => new Date(bookingClock), [bookingClock]);
+  const earliestBookingDate = getTomorrowDateValue(bookingNow);
+  const upcomingDates = useMemo(() => getUpcomingDateValues(10, bookingNow), [bookingNow]);
   const activeAreas = settings.areas.filter((area) => area.active);
   const selectedArea = activeAreas.find((area) => area.id === form.area);
   const basePrice = selectedArea?.priceEgp ?? settings.servicePriceEgp;
@@ -153,6 +170,12 @@ export function BookingForm() {
   const previousAreaPrice = previousArea?.priceEgp ?? lastBooking?.finalPriceEgp;
   const showAreaPriceWarning = Boolean(selectedArea && previousAreaPrice !== undefined && selectedArea.priceEgp !== previousAreaPrice);
   const previousCars = uniquePreviousCars(returningBookings);
+  const bookingClosedByCutoff = Boolean(form.bookingDate && !isBookingDateAllowed(form.bookingDate, bookingNow));
+  const bookingClosed = bookingClosedByCutoff || Boolean(capacity?.fullyBooked);
+  const bookingCloseNotice =
+    language === "ar"
+      ? "آخر موعد للحجز هو قبل بداية موعد غسل السيارات الساعة 12:00 صباحًا. بعد دخول يوم الغسيل لا يمكن حجز نفس الفجر."
+      : "The latest booking time is before the wash window starts at 12:00 AM. Once the wash day begins, that dawn can no longer be booked.";
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -164,7 +187,10 @@ export function BookingForm() {
       setReturningBookings([]);
       setReturningLookupDone(false);
     }
-    if (key === "bookingDate") setLoadingCapacity(true);
+    if (key === "bookingDate") {
+      setLoadingCapacity(Boolean(value));
+      if (!value) setCapacity(null);
+    }
     if (key === "promoCode") setPromoChecked(false);
     setErrors((current) => {
       const next = { ...current };
@@ -212,6 +238,7 @@ export function BookingForm() {
     }
     if (targetStep === 3) {
       if (!form.bookingDate) nextErrors.bookingDate = t("requiredDate");
+      else if (!isBookingDateAllowed(form.bookingDate, bookingNow)) nextErrors.bookingDate = language === "ar" ? "تم إغلاق الحجز لهذا التاريخ مع بداية يوم الغسيل الساعة 12:00 صباحًا." : "Booking is closed for this date because the wash day has started at 12:00 AM.";
       if (form.promoCode.trim() && !promoCodes.some((promo) => promo.code === form.promoCode.trim().toLowerCase())) nextErrors.promoCode = t("invalidPromo");
       if (!form.washWindowAcknowledged) nextErrors.washWindowAcknowledged = t("requiredAck");
     }
@@ -323,6 +350,7 @@ export function BookingForm() {
   function applyReturningBooking(booking = lastBooking) {
     if (!booking) return;
     const { plateLetters, plateDigits } = splitPlateNumber(booking.plateNumber);
+    setSelectedPreviousCarKey(previousCarKey(booking));
     setForm((current) => ({
       ...current,
       customerName: booking.customerName || current.customerName,
@@ -432,8 +460,23 @@ export function BookingForm() {
     window.location.href = `/success?id=${payload.booking.id}`;
   }
 
+  async function captureCarPhoto(file: File | null) {
+    if (!file) {
+      update("carImageName", "");
+      update("carImageDataUrl", "");
+      return;
+    }
+    update("carImageName", file.name);
+    update("carImageDataUrl", await compressImageFile(file));
+  }
+
   return (
-    <form id="booking" onSubmit={submitBooking} className="glass-panel rounded-[8px] p-4 sm:p-6" dir={dir}>
+    <form id="booking" onSubmit={submitBooking} className="glass-panel relative rounded-[8px] p-4 sm:p-6" dir={dir}>
+      {submitting ? (
+        <div className="absolute inset-0 z-20 grid place-items-center rounded-[8px] bg-white/90 p-4 backdrop-blur-sm dark:bg-slate-950/90">
+          <BurnoutLoader label={language === "ar" ? "جاري تأكيد طلبك" : "Submitting your booking"} />
+        </div>
+      ) : null}
       <div className="mb-6">
         <div className="text-sm font-bold text-sky-700">{t("mobileFirst")}</div>
         <h2 className="mt-2 text-2xl font-black text-slate-950 dark:text-white">{t("bookWash")}</h2>
@@ -516,10 +559,14 @@ export function BookingForm() {
                           key={`${booking.carBrand}-${booking.carModel}-${booking.plateNumber || booking.id}`}
                           type="button"
                           onClick={() => applyReturningBooking(booking)}
-                          className="rounded-[8px] bg-white p-3 text-start text-xs font-black text-slate-800 ring-1 ring-emerald-200 transition hover:bg-emerald-100 dark:bg-slate-900 dark:text-slate-100 dark:ring-emerald-900"
+                          className={`rounded-[8px] p-3 text-start text-xs font-black ring-1 transition ${
+                            selectedPreviousCarKey === previousCarKey(booking)
+                              ? "bg-emerald-600 text-white ring-emerald-700"
+                              : "bg-white text-slate-800 ring-emerald-200 hover:bg-emerald-100 dark:bg-slate-900 dark:text-slate-100 dark:ring-emerald-900"
+                          }`}
                         >
                           <span className="block">{booking.carBrand} {booking.carModel} {booking.carYear ? `- ${booking.carYear}` : ""}</span>
-                          <span className="mt-1 block text-slate-500 dark:text-slate-300">{booking.carColor}{booking.plateNumber ? ` - ${booking.plateNumber}` : ""}</span>
+                          <span className={`mt-1 block ${selectedPreviousCarKey === previousCarKey(booking) ? "text-emerald-50" : "text-slate-500 dark:text-slate-300"}`}>{booking.carColor}{booking.plateNumber ? ` - ${booking.plateNumber}` : ""}</span>
                         </button>
                       ))}
                     </div>
@@ -639,7 +686,7 @@ export function BookingForm() {
               <label className="flex cursor-pointer items-center gap-3 rounded-[8px] border border-dashed border-sky-300 bg-sky-50/70 p-3 text-sm font-bold text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
                 <Upload className="h-4 w-4" />
                 <span className="truncate">{form.carImageName || t("choosePhoto")}</span>
-                <input className="sr-only" type="file" accept="image/*" onChange={(e) => update("carImageName", e.target.files?.[0]?.name || "")} />
+                <input className="sr-only" type="file" accept="image/*" onChange={(e) => captureCarPhoto(e.target.files?.[0] || null)} />
               </label>
             </Field>
             <Field label={t("notes")} error={errors.notes}>
@@ -652,11 +699,13 @@ export function BookingForm() {
         {step === 3 ? (
           <>
             <Field label={`${t("bookingDate")} (${washWindow})`} error={errors.bookingDate}>
-              <input name="bookingDate" className={fieldClass(errors.bookingDate)} type="date" min={getTomorrowDateValue()} value={form.bookingDate} onChange={(e) => update("bookingDate", e.target.value)} required />
+              <input name="bookingDate" className={fieldClass(errors.bookingDate)} type="date" min={earliestBookingDate} value={form.bookingDate} onChange={(e) => update("bookingDate", e.target.value)} required />
+              <p className="mt-2 rounded-[8px] bg-sky-50 p-3 text-xs font-bold leading-5 text-sky-900 dark:bg-sky-950/35 dark:text-sky-100">{bookingCloseNotice}</p>
               <div className="-mx-1 mt-3 flex gap-2 overflow-x-auto px-1 pb-2 lg:mx-0 lg:grid lg:grid-cols-5 lg:overflow-visible lg:px-0">
                 {upcomingDates.map((date) => {
                   const selected = date === form.bookingDate;
-                  const full = selected && capacity?.fullyBooked;
+                  const dateClosedByCutoff = !isBookingDateAllowed(date, bookingNow);
+                  const full = dateClosedByCutoff || (selected && capacity?.fullyBooked);
                   return (
                     <button
                       type="button"
@@ -671,7 +720,7 @@ export function BookingForm() {
                       <span className="mt-1 block text-[0.68rem]">{washWindow}</span>
                       {selected ? (
                         <span className="mt-1 block font-bold">
-                          {loadingCapacity ? t("checking") : capacity?.fullyBooked ? t("fullyBooked") : `${capacity?.remaining ?? "-"} ${t("left")}`}
+                          {loadingCapacity ? t("checking") : capacity?.reason === "cutoff" || bookingClosedByCutoff ? (language === "ar" ? "مغلق" : "Closed") : capacity?.fullyBooked ? t("fullyBooked") : `${capacity?.remaining ?? "-"} ${t("left")}`}
                         </span>
                       ) : null}
                     </button>
@@ -679,7 +728,7 @@ export function BookingForm() {
                 })}
               </div>
             </Field>
-            <Field label={t("promoCode")} error={errors.promoCode}>
+            <Field label={language === "ar" ? `${t("promoCode")} (اختياري)` : `${t("promoCode")} (optional)`} error={errors.promoCode}>
               <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
                 <input name="promoCode" className={fieldClass(errors.promoCode)} value={form.promoCode} onChange={(e) => update("promoCode", e.target.value)} />
                 <button type="button" onClick={verifyPromoCode} className="inline-flex h-12 items-center justify-center rounded-[8px] bg-slate-950 px-4 text-sm font-black text-white dark:bg-white dark:text-slate-950">
@@ -752,7 +801,7 @@ export function BookingForm() {
               {dir === "rtl" ? <ArrowLeft className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
             </button>
           ) : (
-            <button type="submit" disabled={submitting || capacity?.fullyBooked} className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-[8px] bg-sky-600 px-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-400">
+            <button type="submit" disabled={submitting || bookingClosed} className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-[8px] bg-sky-600 px-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-400">
               {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
               {t("submit")}
             </button>
@@ -805,15 +854,50 @@ function splitPlateNumber(value?: string) {
 function uniquePreviousCars(bookings: Booking[]) {
   const seen = new Set<string>();
   return bookings.filter((booking) => {
-    const key = [
-      booking.carBrand,
-      booking.carModel,
-      booking.carYear || "",
-      booking.carColor,
-      booking.plateNumber || ""
-    ].join("|").toLowerCase();
+    const key = previousCarKey(booking);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
+  });
+}
+
+function previousCarKey(booking: Booking) {
+  return [
+    booking.carBrand,
+    booking.carModel,
+    booking.carYear || "",
+    booking.carColor,
+    booking.plateNumber || ""
+  ].join("|").toLowerCase();
+}
+
+function compressImageFile(file: File, maxSize = 1280, quality = 0.72): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        resolve("");
+        return;
+      }
+
+      const image = new Image();
+      image.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        const context = canvas.getContext("2d");
+        if (!context) {
+          resolve(reader.result as string);
+          return;
+        }
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/webp", quality));
+      };
+      image.onerror = () => resolve(reader.result as string);
+      image.src = reader.result;
+    };
+    reader.onerror = () => resolve("");
+    reader.readAsDataURL(file);
   });
 }

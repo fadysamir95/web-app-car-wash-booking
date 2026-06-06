@@ -6,6 +6,8 @@ import { ADMIN_SESSION_COOKIE, WORKER_SESSION_COOKIE } from "./constants";
 
 const dataDir = path.join(process.cwd(), "data");
 const adminSecurityPath = path.join(dataDir, "admin-security.json");
+export const ADMIN_IDLE_TIMEOUT_SECONDS = 30 * 60;
+const WORKER_SESSION_SECONDS = 8 * 60 * 60;
 
 type AdminSecurity = {
   passwordHash?: string;
@@ -41,7 +43,8 @@ function isValidToken(token: string | undefined, role: "admin" | "worker") {
   if (!value || !signature) return false;
   const issuedAt = role === "worker" ? value.split(":")[1] : value;
   const age = Date.now() - Number(issuedAt);
-  if (!Number.isFinite(age) || age > 1000 * 60 * 60 * 8) return false;
+  const maxAge = role === "admin" ? ADMIN_IDLE_TIMEOUT_SECONDS * 1000 : WORKER_SESSION_SECONDS * 1000;
+  if (!Number.isFinite(age) || age > maxAge) return false;
 
   const expected = sign(value, role);
   const left = Buffer.from(signature);

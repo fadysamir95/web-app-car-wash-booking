@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, Copy, ExternalLink, MessageCircle, WalletCards } from "lucide-react";
+import { CheckCircle2, Copy, ExternalLink, MessageCircle, Share2, WalletCards } from "lucide-react";
 import { PROMO_CODES, SERVICE_CONFIG } from "@/lib/constants";
 import { formatDisplayDate } from "@/lib/date";
 import { finalPriceFromPromo } from "@/lib/pricing";
 import type { Booking, ServiceSettings } from "@/lib/types";
 import { useLanguage } from "@/components/language-provider";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { BrandLogo } from "@/components/brand-logo";
 
 export default function SuccessPage() {
   const { language, dir, t } = useLanguage();
@@ -33,6 +34,11 @@ export default function SuccessPage() {
   const servicePrice = booking?.finalPriceEgp ?? finalPriceFromPromo(appliedPromo ? { ...appliedPromo, active: true } : null, settings?.servicePriceEgp || undefined);
   const isFreeBooking = servicePrice === 0;
   const remainingMs = booking?.expiresAt && !isFreeBooking && now > 0 ? Math.max(new Date(booking.expiresAt).getTime() - now, 0) : null;
+  const paymentWindowMs =
+    booking?.expiresAt && booking.createdAt
+      ? Math.max(new Date(booking.expiresAt).getTime() - new Date(booking.createdAt).getTime(), 1)
+      : 1;
+  const paymentProgress = remainingMs === null ? 100 : Math.max(0, Math.min(100, (remainingMs / paymentWindowMs) * 100));
   const trackingPath = booking ? `/my-booking?ref=${encodeURIComponent(booking.id)}` : "/my-booking";
   const trackingUrl = typeof window !== "undefined" ? `${window.location.origin}${trackingPath}` : trackingPath;
 
@@ -70,12 +76,24 @@ export default function SuccessPage() {
     window.setTimeout(() => setTrackingCopied(false), 1600);
   }
 
+  async function shareTrackingLink() {
+    if (navigator.share) {
+      await navigator.share({
+        title: "VAYAX booking",
+        text: language === "ar" ? "رابط تتبع حجز VAYAX" : "VAYAX booking tracking link",
+        url: trackingUrl
+      });
+      return;
+    }
+    await copyTrackingLink();
+  }
+
   return (
     <main className="min-h-svh bg-slate-950 px-4 py-8 text-white" dir={dir}>
       <div className="mx-auto max-w-3xl">
         <header className="mb-4 flex items-center justify-between">
-          <Link href="/" className="text-sm font-black text-white">
-            {t("brand")}
+          <Link href="/" aria-label="VAYAX home">
+            <BrandLogo compact dark size="lg" />
           </Link>
           <LanguageSwitcher />
         </header>
@@ -90,25 +108,24 @@ export default function SuccessPage() {
             <p>{isFreeBooking ? t("freeBookingMessage") : t("successPaymentPrompt")}</p>
           </div>
 
-          <div className="mt-6 grid gap-3 rounded-[8px] bg-sky-50 p-4 text-sm text-slate-800">
-            <p>
-              <strong>{t("bookingReference")}:</strong> {booking?.id || "-"}
-            </p>
-            <p>
-              <strong>{t("fullName")}:</strong> {booking?.customerName || "-"}
-            </p>
-            <p>
-              <strong>{t("phoneNumber")}:</strong> {booking?.phoneNumber || "-"}
-            </p>
-            <p>
-              <strong>{t("bookingDate")}:</strong> {booking ? formatDisplayDate(booking.bookingDate, language) : "-"}
-            </p>
-            <p>
-              <strong>{t("area")}:</strong> {booking?.areaName || booking?.area || "-"}
-            </p>
-            <p>
-              <strong>{t("bookingStatus")}:</strong> {isFreeBooking ? t("bookingConfirmed") : t("pendingPayment")}
-            </p>
+          <div className="mt-6 overflow-hidden rounded-[8px] border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3">
+              <BrandLogo compact size="md" />
+              <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-black text-sky-800">
+                {isFreeBooking ? t("bookingConfirmed") : t("pendingPayment")}
+              </span>
+            </div>
+            <div className="grid gap-3 p-4 text-sm text-slate-800 sm:grid-cols-2">
+              <ReceiptItem label={t("bookingReference")} value={booking?.id || "-"} strong />
+              <ReceiptItem label={t("servicePrice")} value={`${servicePrice} EGP`} strong />
+              <ReceiptItem label={t("fullName")} value={booking?.customerName || "-"} />
+              <ReceiptItem label={t("phoneNumber")} value={booking?.phoneNumber || "-"} />
+              <ReceiptItem label={t("bookingDate")} value={booking ? formatDisplayDate(booking.bookingDate, language) : "-"} />
+              <ReceiptItem label={t("area")} value={booking?.areaName || booking?.area || "-"} />
+            </div>
+            <div className="border-t border-slate-100 bg-sky-50 px-4 py-3 text-sm font-bold text-slate-700">
+              {language === "ar" ? "احفظ رقم الحجز أو رابط التتبع لاستخدامه عند إرسال صورة التحويل أو متابعة الحالة." : "Keep your booking reference or tracking link for payment proof and status updates."}
+            </div>
           </div>
 
           <div className="mt-6 grid gap-3 rounded-[8px] border border-sky-200 bg-sky-50 p-4 text-slate-950">
@@ -140,10 +157,20 @@ export default function SuccessPage() {
               <Copy className="h-4 w-4" />
               {trackingCopied ? t("copied") : language === "ar" ? "نسخ رابط التتبع" : "Copy tracking link"}
             </button>
+            <button type="button" onClick={shareTrackingLink} className="inline-flex h-12 items-center justify-center gap-2 rounded-[8px] bg-sky-50 px-4 text-sm font-black text-sky-800 ring-1 ring-sky-100 sm:col-span-2">
+              <Share2 className="h-4 w-4" />
+              {language === "ar" ? "مشاركة رابط التتبع" : "Share tracking link"}
+            </button>
           </div>
           {remainingMs !== null ? (
-            <div className="mt-4 rounded-[8px] border border-amber-300 bg-amber-50 p-3 text-sm font-black text-amber-950">
-              {remainingMs > 0 ? `${t("paymentCountdown")}: ${formatCountdown(remainingMs)}` : t("bookingExpired")}
+            <div className="mt-4 rounded-[8px] border border-amber-300 bg-amber-50 p-4 text-amber-950">
+              <div className="flex items-center justify-between gap-3 text-sm font-black">
+                <span>{remainingMs > 0 ? t("paymentCountdown") : t("bookingExpired")}</span>
+                <span>{remainingMs > 0 ? formatCountdown(remainingMs) : "00:00:00"}</span>
+              </div>
+              <div className="mt-3 h-3 overflow-hidden rounded-full bg-amber-100">
+                <div className="h-full rounded-full bg-amber-500 transition-all" style={{ width: `${paymentProgress}%` }} />
+              </div>
             </div>
           ) : null}
           {!isFreeBooking ? <p className="mt-4 text-sm leading-6 text-slate-600">{t("manualPayment")}</p> : null}
@@ -181,6 +208,15 @@ export default function SuccessPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+function ReceiptItem({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div className="rounded-[8px] bg-slate-50 p-3">
+      <p className="text-xs font-black uppercase text-slate-500">{label}</p>
+      <p className={`mt-1 text-slate-950 ${strong ? "text-lg font-black" : "font-bold"}`}>{value}</p>
+    </div>
   );
 }
 

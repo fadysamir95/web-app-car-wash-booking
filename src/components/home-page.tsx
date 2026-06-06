@@ -6,6 +6,7 @@ import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Clock, Loader2, MapPin, MessageCircle, Search, Sparkles } from "lucide-react";
 import { BookingForm } from "@/components/booking-form";
+import { BrandLogo } from "@/components/brand-logo";
 import { DEFAULT_SERVICE, PROMO_CODES, SERVICE_AREAS, SERVICE_CONFIG } from "@/lib/constants";
 import { formatDisplayDate } from "@/lib/date";
 import { bookingFinalPrice } from "@/lib/pricing";
@@ -55,8 +56,8 @@ export function HomePage() {
         <div className="absolute inset-0 bg-gradient-to-r from-slate-950/88 via-slate-950/56 to-sky-950/20 rtl:bg-gradient-to-l" />
         <div className="relative mx-auto grid max-w-6xl gap-8 px-4 py-5 sm:px-6 lg:grid-cols-[0.92fr_1.08fr] lg:py-8">
           <header className="col-span-full flex items-center justify-between">
-            <Link href="/" className="text-sm font-black text-white">
-              {t("brand")}
+            <Link href="/" aria-label="VAYAX home">
+              <BrandLogo compact dark size="lg" />
             </Link>
             <div className="flex items-center gap-2">
               <LanguageSwitcher />
@@ -111,6 +112,12 @@ export function HomePage() {
           </div>
         </div>
       </section>
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur lg:hidden dark:border-slate-800 dark:bg-slate-950/95">
+        <a href="#booking" className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[8px] bg-sky-600 text-sm font-black text-white">
+          {t("cta")}
+          <ArrowRight className="h-4 w-4 rtl:rotate-180" />
+        </a>
+      </div>
     </main>
   );
 }
@@ -161,10 +168,24 @@ function MyBookings() {
       </div>
 
       <div className="mt-4 grid gap-3">
+        {loading ? <BookingLookupSkeleton /> : null}
         {bookings.map((booking) => (
           <BookingLookupCard key={booking.id} booking={booking} language={language} />
         ))}
         {searched && !loading && bookings.length === 0 ? <p className="rounded-[8px] bg-slate-50 p-4 text-sm font-bold text-slate-500 dark:bg-slate-900">{t("noBookingFound")}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+function BookingLookupSkeleton() {
+  return (
+    <div className="rounded-[8px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+      <div className="h-5 w-44 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
+      <div className="mt-3 grid gap-2">
+        <div className="h-4 w-full animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
+        <div className="h-4 w-2/3 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
+        <div className="h-10 w-40 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
       </div>
     </div>
   );

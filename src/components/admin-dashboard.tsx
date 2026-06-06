@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, BadgePercent, Ban, Bell, CalendarDays, CheckCircle2, ClipboardList, Download, Droplets, Eye, EyeOff, ExternalLink, Hourglass, LogOut, Map as MapIcon, Megaphone, MessageSquareWarning, Pencil, Save, Search, Send, ShieldCheck, SlidersHorizontal, Smartphone, Trash2, UserCog, Users, WalletCards, X } from "lucide-react";
+import { AlertTriangle, BadgePercent, Ban, Bell, CalendarDays, CheckCircle2, ClipboardList, Download, Droplets, Eye, EyeOff, ExternalLink, Hourglass, LogOut, Map as MapIcon, MapPin, Megaphone, MessageSquareWarning, Pencil, Save, Search, Send, Settings as SettingsIcon, ShieldCheck, Smartphone, Trash2, UserCog, Users, WalletCards, X } from "lucide-react";
 import { BOOKING_STATUSES, DEFAULT_SERVICE, PROMO_CODES, SERVICE_AREAS } from "@/lib/constants";
-import { formatDisplayDate } from "@/lib/date";
+import { formatDisplayDate, toDateInputValue } from "@/lib/date";
 import { bookingFinalPrice as calculateBookingFinalPrice, promoDisplayValue } from "@/lib/pricing";
 import type { Booking, CustomerSummary, PromoCode, PublicWorker, ServiceSettings } from "@/lib/types";
 import type { TranslationKey } from "@/lib/i18n";
+import { BrandLogo } from "./brand-logo";
 import { useLanguage } from "./language-provider";
 import { LanguageSwitcher } from "./language-switcher";
 
@@ -16,12 +17,26 @@ type NotificationItem = {
   id: string;
   text: string;
   createdAt: string;
+  read: boolean;
 };
 type PendingDelete =
   | { type: "booking"; id: string; label: string }
   | { type: "customer"; phoneNumber: string; label: string }
   | { type: "allBookings"; label: string }
   | { type: "allCustomers"; label: string };
+type PendingStatusChange = {
+  bookingId: string;
+  customerName: string;
+  bookingReference: string;
+  carLabel: string;
+  area: string;
+  from: Booking["bookingStatus"];
+  to: Booking["bookingStatus"];
+};
+
+const ADMIN_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+const ADMIN_SESSION_REFRESH_MS = 5 * 60 * 1000;
+const PAGE_SIZE = 20;
 
 export function AdminDashboard({
   initialBookings,
@@ -37,15 +52,22 @@ export function AdminDashboard({
   const [tab, setTab] = useState<Tab>("todayOps");
   const [dateFilter, setDateFilter] = useState("");
   const [areaFilter, setAreaFilter] = useState("");
+  const [operationDateFilter, setOperationDateFilter] = useState("");
+  const [operationAreaFilter, setOperationAreaFilter] = useState("");
   const [query, setQuery] = useState("");
   const [editingCustomer, setEditingCustomer] = useState<CustomerSummary | null>(null);
   const [editingCustomerPhone, setEditingCustomerPhone] = useState("");
   const [newBookingAlert, setNewBookingAlert] = useState<Booking | null>(null);
   const [notificationHistoryOpen, setNotificationHistoryOpen] = useState(false);
   const [notificationHistory, setNotificationHistory] = useState<NotificationItem[]>([]);
+  const [showAllNotifications, setShowAllNotifications] = useState(false);
+  const [justReadNotificationIds, setJustReadNotificationIds] = useState<Set<string>>(new Set());
+  const [revenueVisible, setRevenueVisible] = useState(false);
   const [selectedBookingId, setSelectedBookingId] = useState("");
   const [toast, setToast] = useState("");
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+  const [pendingStatusChange, setPendingStatusChange] = useState<PendingStatusChange | null>(null);
+  const [pendingStatusWorkerId, setPendingStatusWorkerId] = useState("");
   const [analyticsNow, setAnalyticsNow] = useState("");
   const [promos, setPromos] = useState<PromoCode[]>(PROMO_CODES.map((promo) => ({ ...promo, discountType: "amount", active: true })));
   const [promoForm, setPromoForm] = useState({ code: "", label: "", discountType: "amount", discountValue: "25", expiresAt: "" });
@@ -53,8 +75,14 @@ export function AdminDashboard({
   const [workers, setWorkers] = useState<PublicWorker[]>(initialWorkers);
   const [workerForm, setWorkerForm] = useState({ name: "", password: "", areas: initialSettings.areas.filter((area) => area.active).map((area) => area.id) });
   const [adminPasswordForm, setAdminPasswordForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
+  const [bookingsPage, setBookingsPage] = useState(1);
+  const [customersPage, setCustomersPage] = useState(1);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">("unsupported");
   const knownBookingIds = useRef(new Set(initialBookings.map((booking) => booking.id)));
+  const notificationRef = useRef<HTMLDivElement | null>(null);
+  const notificationsLoaded = useRef(false);
+  const lastAdminActivity = useRef(0);
+  const lastSessionRefresh = useRef(0);
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -77,6 +105,9 @@ export function AdminDashboard({
     if (tab === "completedWashes") return filtered.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Completed");
     return filtered;
   }, [filtered, tab]);
+  const bookingPages = Math.max(1, Math.ceil(displayedBookings.length / PAGE_SIZE));
+  const currentBookingsPage = Math.min(bookingsPage, bookingPages);
+  const pagedBookings = displayedBookings.slice((currentBookingsPage - 1) * PAGE_SIZE, currentBookingsPage * PAGE_SIZE);
 
   const customers = useMemo<CustomerSummary[]>(() => {
     const map = new Map<string, CustomerSummary>();
@@ -106,6 +137,9 @@ export function AdminDashboard({
     }
     return [...map.values()].sort((a, b) => b.lastBookingDate.localeCompare(a.lastBookingDate));
   }, [bookings]);
+  const customerPages = Math.max(1, Math.ceil(customers.length / PAGE_SIZE));
+  const currentCustomersPage = Math.min(customersPage, customerPages);
+  const pagedCustomers = customers.slice((currentCustomersPage - 1) * PAGE_SIZE, currentCustomersPage * PAGE_SIZE);
 
   const dailyCounts = useMemo(() => {
     return bookings.reduce<Record<string, number>>((acc, booking) => {
@@ -127,7 +161,10 @@ export function AdminDashboard({
     .filter((booking) => booking.paymentStatus === "Verified")
     .reduce((total, booking) => total + bookingFinalPrice(booking), 0);
   const analyticsTime = analyticsNow ? new Date(analyticsNow).getTime() : 0;
-  const todayValue = analyticsNow.slice(0, 10);
+  const analyticsDate = analyticsTime ? new Date(analyticsTime) : null;
+  const todayValue = analyticsDate ? toDateInputValue(analyticsDate) : "";
+  const currentOperationDateValue = analyticsDate ? getDawnOperationDateValue(analyticsDate) : "";
+  const operationDateValue = operationDateFilter || currentOperationDateValue;
   const weekAgoValue = analyticsTime ? new Date(analyticsTime - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10) : "";
   const monthAgoValue = analyticsTime ? new Date(analyticsTime - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10) : "";
   const revenueToday = revenueSince(bookings, todayValue);
@@ -141,21 +178,17 @@ export function AdminDashboard({
   const unpaidCancellations = bookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Cancelled" && booking.paymentStatus === "Rejected").length;
   const unpaidCancellationRate = bookings.length > 0 ? Math.round((unpaidCancellations / bookings.length) * 100) : 0;
   const bestPromo = bestPromoLabel(bookings);
-  const repeatCustomers = customers.filter((customer) => customer.totalBookings > 1).length;
   const pendingBookings = bookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Pending").length;
   const confirmedBookings = bookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Confirmed").length;
   const cancelledBookings = bookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Cancelled").length;
   const completedWashes = bookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Completed").length;
   const complaints = bookings.filter((booking) => booking.complaint);
-  const todayBookings = todayValue ? bookings.filter((booking) => booking.bookingDate === todayValue) : [];
-  const todayPending = todayBookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Pending").length;
-  const todayConfirmed = todayBookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Confirmed").length;
-  const todayCompleted = todayBookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Completed").length;
-  const todayRemaining = todayBookings.filter((booking) => {
-    const status = normalizedBookingStatus(booking.bookingStatus);
-    return status !== "Cancelled" && status !== "Completed";
-  }).length;
+  const todayBookings = operationDateValue ? bookings.filter((booking) => booking.bookingDate === operationDateValue) : [];
+  const dawnConfirmedBookings = todayBookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Confirmed");
+  const displayedDawnBookings = operationAreaFilter ? dawnConfirmedBookings.filter((booking) => booking.area === operationAreaFilter) : dawnConfirmedBookings;
   const selectedBooking = bookings.find((booking) => booking.id === selectedBookingId) || null;
+  const unreadNotifications = notificationHistory.filter((item) => !item.read).length;
+  const displayedNotifications = showAllNotifications ? notificationHistory : notificationHistory.slice(0, 6);
   const capacityWarnings = useMemo(() => {
     const warningAt = settings.maxBookingsPerDay - 2;
     return Object.entries(dailyCounts)
@@ -163,17 +196,23 @@ export function AdminDashboard({
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   }, [dailyCounts, settings.maxBookingsPerDay]);
 
-  async function updateBooking(id: string, updates: Partial<Pick<Booking, "bookingStatus">>) {
+  async function updateBooking(id: string, updates: Partial<Pick<Booking, "bookingStatus" | "completedByWorkerId">>) {
     const oldBooking = bookings.find((booking) => booking.id === id);
     const response = await fetch(`/api/admin/bookings/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updates)
+      body: JSON.stringify({
+        bookingStatus: updates.bookingStatus,
+        workerId: updates.completedByWorkerId
+      })
     });
 
     if (!response.ok) return;
-    const payload = (await response.json()) as { booking: Booking };
+    const payload = (await response.json()) as { booking: Booking; worker?: PublicWorker | null };
     setBookings((current) => current.map((booking) => (booking.id === id ? payload.booking : booking)));
+    if (payload.worker) {
+      setWorkers((current) => current.map((worker) => (worker.id === payload.worker?.id ? payload.worker : worker)));
+    }
     if (oldBooking && updates.bookingStatus) {
       const message =
         t("bookingMoved")
@@ -184,6 +223,46 @@ export function AdminDashboard({
           .replace("{to}", bookingStatusLabel(payload.booking.bookingStatus, language));
       notify(message);
     }
+  }
+
+  function requestStatusChange(bookingId: string, nextStatus: Booking["bookingStatus"]) {
+    const booking = bookings.find((item) => item.id === bookingId);
+    if (!booking) return;
+    const from = normalizedBookingStatus(booking.bookingStatus);
+    const to = normalizedBookingStatus(nextStatus);
+    if (from === to) return;
+
+    if (isSensitiveStatusChange(to)) {
+      const defaultWorkerId = to === "Completed" ? workers.find((worker) => worker.areas.includes(booking.area))?.id || workers[0]?.id || "" : "";
+      setPendingStatusWorkerId(defaultWorkerId);
+      setPendingStatusChange({
+        bookingId: booking.id,
+        customerName: booking.customerName,
+        bookingReference: booking.id,
+        carLabel: [booking.carBrand, booking.carModel, booking.carColor].filter(Boolean).join(" "),
+        area: booking.area,
+        from,
+        to
+      });
+      return;
+    }
+
+    void updateBooking(booking.id, { bookingStatus: to });
+  }
+
+  async function confirmPendingStatusChange() {
+    if (!pendingStatusChange) return;
+    const current = pendingStatusChange;
+    const booking = bookings.find((item) => item.id === current.bookingId);
+    if (current.to === "Completed" && !pendingStatusWorkerId) return;
+    setPendingStatusChange(null);
+
+    if (booking && current.from === "Pending" && current.to === "Confirmed") {
+      window.open(customerWhatsAppUrl(booking, language), "_blank", "noopener,noreferrer");
+    }
+
+    await updateBooking(current.bookingId, { bookingStatus: current.to, completedByWorkerId: current.to === "Completed" ? pendingStatusWorkerId : undefined });
+    setPendingStatusWorkerId("");
   }
 
   async function deleteBooking(id: string) {
@@ -198,16 +277,18 @@ export function AdminDashboard({
   async function runPrimaryBookingAction(booking: Booking) {
     const action = primaryBookingAction(booking);
     if (!action) return;
-    if (normalizedBookingStatus(booking.bookingStatus) === "Pending") {
-      window.open(customerWhatsAppUrl(booking, language), "_blank", "noopener,noreferrer");
-    }
-    await updateBooking(booking.id, { bookingStatus: action.next });
+    requestStatusChange(booking.id, action.next);
   }
 
   async function logout() {
     await fetch("/api/admin/logout", { method: "POST" });
     window.location.reload();
   }
+
+  const logoutAfterIdle = useCallback(async () => {
+    await fetch("/api/admin/logout", { method: "POST" }).catch(() => undefined);
+    window.location.href = "/admin";
+  }, []);
 
   async function saveCustomer() {
     if (!editingCustomer) return;
@@ -310,12 +391,13 @@ export function AdminDashboard({
   }
 
   async function addPromoCode() {
+    const generatedCode = nextPromoCode(promoForm.label, promos);
     const response = await fetch("/api/admin/promos", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        code: promoForm.code,
-        label: promoForm.label || promoForm.code,
+        code: generatedCode,
+        label: promoForm.label || generatedCode,
         discountType: promoForm.discountType,
         discountEgp: promoForm.discountType === "amount" ? Number(promoForm.discountValue || 0) : 0,
         discountPercent: promoForm.discountType === "percentage" ? Number(promoForm.discountValue || 0) : undefined,
@@ -401,8 +483,8 @@ export function AdminDashboard({
 
   function sendSegmentCampaign(segment: CustomerSummary[], label: string) {
     const message = language === "ar"
-      ? `عرض خاص من Car Wash Booking لعملاء ${label}. احجز غسلتك القادمة الآن.`
-      : `Special offer from Car Wash Booking for ${label}. Book your next wash now.`;
+      ? `عرض خاص من VAYAX لعملاء ${label}. احجز خدمتك القادمة الآن.`
+      : `Special offer from VAYAX for ${label}. Book your next service now.`;
     const phoneList = segment.map((customer) => `${customer.phoneNumber} - ${customer.customerName}`).join("\n");
     void navigator.clipboard.writeText(`${message}\n\n${phoneList}`);
     notify(language === "ar" ? "تم نسخ رسالة العرض وقائمة العملاء." : "Campaign message and customer list copied.");
@@ -415,18 +497,114 @@ export function AdminDashboard({
 
   function notify(message: string) {
     setNotificationHistory((current) => [
-      { id: `${Date.now()}-${current.length}`, text: message, createdAt: new Date().toLocaleTimeString() },
+      { id: `${Date.now()}-${current.length}`, text: message, createdAt: new Date().toLocaleTimeString(), read: false },
       ...current
-    ].slice(0, 20));
+    ].slice(0, 60));
     showToast(message);
   }
 
+  function toggleNotificationHistory() {
+    setNotificationHistoryOpen((current) => {
+      const next = !current;
+      if (next) {
+        const unreadIds = new Set(notificationHistory.filter((item) => !item.read).map((item) => item.id));
+        setJustReadNotificationIds(unreadIds);
+        setNotificationHistory((items) => items.map((item) => ({ ...item, read: true })));
+      } else {
+        setJustReadNotificationIds(new Set());
+        setShowAllNotifications(false);
+      }
+      return next;
+    });
+  }
+
+  function clearNotifications() {
+    setNotificationHistory([]);
+    setJustReadNotificationIds(new Set());
+    setShowAllNotifications(false);
+  }
+
   useEffect(() => {
+    lastAdminActivity.current = Date.now();
     queueMicrotask(() => {
       if ("Notification" in window) setNotificationPermission(Notification.permission);
       setAnalyticsNow(new Date().toISOString());
+      const savedNotifications = window.localStorage.getItem("carwash-admin-notifications");
+      if (savedNotifications) {
+        try {
+          setNotificationHistory(JSON.parse(savedNotifications) as NotificationItem[]);
+        } catch {
+          setNotificationHistory([]);
+        }
+      }
+      notificationsLoaded.current = true;
     });
+    const interval = window.setInterval(() => setAnalyticsNow(new Date().toISOString()), 60_000);
+    return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    let idleTimer = window.setTimeout(logoutAfterIdle, ADMIN_IDLE_TIMEOUT_MS);
+    let refreshing = false;
+
+    async function refreshAdminSession() {
+      if (refreshing) return;
+      const now = Date.now();
+      if (now - lastSessionRefresh.current < ADMIN_SESSION_REFRESH_MS) return;
+
+      refreshing = true;
+      lastSessionRefresh.current = now;
+      const response = await fetch("/api/admin/session", { method: "POST" }).catch(() => null);
+      refreshing = false;
+      if (response && response.status === 401) {
+        await logoutAfterIdle();
+      }
+    }
+
+    function recordActivity() {
+      lastAdminActivity.current = Date.now();
+      window.clearTimeout(idleTimer);
+      idleTimer = window.setTimeout(logoutAfterIdle, ADMIN_IDLE_TIMEOUT_MS);
+      void refreshAdminSession();
+    }
+
+    function checkResume() {
+      if (Date.now() - lastAdminActivity.current >= ADMIN_IDLE_TIMEOUT_MS) {
+        void logoutAfterIdle();
+      }
+    }
+
+    const events: Array<keyof WindowEventMap> = ["click", "keydown", "pointermove", "touchstart"];
+    events.forEach((event) => window.addEventListener(event, recordActivity, { passive: true }));
+    document.addEventListener("visibilitychange", checkResume);
+    window.addEventListener("focus", checkResume);
+    void refreshAdminSession();
+
+    return () => {
+      window.clearTimeout(idleTimer);
+      events.forEach((event) => window.removeEventListener(event, recordActivity));
+      document.removeEventListener("visibilitychange", checkResume);
+      window.removeEventListener("focus", checkResume);
+    };
+  }, [logoutAfterIdle]);
+
+  useEffect(() => {
+    if (!notificationsLoaded.current) return;
+    window.localStorage.setItem("carwash-admin-notifications", JSON.stringify(notificationHistory));
+  }, [notificationHistory]);
+
+  useEffect(() => {
+    function handlePointerDown(event: PointerEvent) {
+      if (!notificationHistoryOpen) return;
+      if (notificationRef.current?.contains(event.target as Node)) return;
+      setNotificationHistoryOpen(false);
+      setJustReadNotificationIds(new Set());
+      setShowAllNotifications(false);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [notificationHistoryOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -458,9 +636,9 @@ export function AdminDashboard({
         const message = `${t("newBookingAlert")}: ${latestNewBooking.customerName} - ${latestNewBooking.phoneNumber}`;
         setNewBookingAlert(latestNewBooking);
         setNotificationHistory((current) => [
-          { id: `${Date.now()}-${latestNewBooking.id}`, text: message, createdAt: new Date().toLocaleTimeString() },
+          { id: `${Date.now()}-${latestNewBooking.id}`, text: message, createdAt: new Date().toLocaleTimeString(), read: false },
           ...current
-        ].slice(0, 20));
+        ].slice(0, 60));
         playNewBookingSound();
         if ("Notification" in window && Notification.permission === "granted") {
           new Notification(t("newBookingAlert"), {
@@ -489,46 +667,73 @@ export function AdminDashboard({
       <div className="mx-auto max-w-7xl">
         <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-black uppercase text-sky-700">{t("brand")}</p>
+            <BrandLogo compact size="lg" bare />
             <h1 className="text-3xl font-black text-slate-950 dark:text-white">{t("adminDashboard")}</h1>
           </div>
           <div className="flex gap-2">
-            <div className="relative">
+            <div className="relative" ref={notificationRef}>
               <button
                 type="button"
-                onClick={() => setNotificationHistoryOpen((current) => !current)}
+                onClick={toggleNotificationHistory}
                 className="relative inline-flex h-10 w-10 items-center justify-center rounded-[8px] bg-white text-slate-700 shadow-sm dark:bg-slate-900 dark:text-slate-200"
                 aria-label={t("notificationHistory")}
               >
                 <Bell className="h-4 w-4" />
-                {notificationHistory.length > 0 ? <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-rose-600 px-1 text-[0.65rem] font-black text-white">{notificationHistory.length}</span> : null}
+                {unreadNotifications > 0 ? <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-rose-600 px-1 text-[0.65rem] font-black text-white">{unreadNotifications}</span> : null}
               </button>
               {notificationHistoryOpen ? (
                 <div className="absolute right-0 top-12 z-30 w-80 overflow-hidden rounded-[8px] bg-white shadow-2xl ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800 rtl:left-0 rtl:right-auto">
-                  <div className="border-b border-slate-100 p-3 text-sm font-black text-slate-950 dark:border-slate-800 dark:text-white">{t("notificationHistory")}</div>
+                  <div className="flex items-center justify-between gap-2 border-b border-slate-100 p-3 text-sm font-black text-slate-950 dark:border-slate-800 dark:text-white">
+                    <span>{t("notificationHistory")}</span>
+                    {notificationHistory.length > 0 ? (
+                      <button type="button" onClick={clearNotifications} className="rounded-[8px] bg-rose-50 px-2 py-1 text-xs font-black text-rose-700 dark:bg-rose-950/40 dark:text-rose-100">
+                        {language === "ar" ? "مسح الكل" : "Clear all"}
+                      </button>
+                    ) : null}
+                  </div>
                   <div className="max-h-80 overflow-y-auto">
                     {notificationHistory.length === 0 ? (
                       <p className="p-4 text-sm font-bold text-slate-500">{t("noNotifications")}</p>
                     ) : (
-                      notificationHistory.map((item) => (
-                        <div key={item.id} className="border-b border-slate-100 p-3 text-sm last:border-0 dark:border-slate-800">
-                          <p className="font-bold text-slate-800 dark:text-slate-100">{item.text}</p>
+                      displayedNotifications.map((item) => (
+                        <div key={item.id} className={`border-b border-slate-100 p-3 text-sm last:border-0 dark:border-slate-800 ${justReadNotificationIds.has(item.id) ? "bg-sky-50 dark:bg-sky-950/30" : ""}`}>
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="font-bold text-slate-800 dark:text-slate-100">{item.text}</p>
+                            {justReadNotificationIds.has(item.id) ? <span className="rounded-full bg-sky-600 px-2 py-0.5 text-[0.65rem] font-black text-white">{language === "ar" ? "جديد" : "New"}</span> : null}
+                          </div>
                           <p className="mt-1 text-xs font-bold text-slate-400">{item.createdAt}</p>
                         </div>
                       ))
                     )}
+                    {!showAllNotifications && notificationHistory.length > 6 ? (
+                      <button type="button" onClick={() => setShowAllNotifications(true)} className="h-10 w-full text-sm font-black text-sky-700 dark:text-sky-300">
+                        {language === "ar" ? "عرض الكل" : "Show all"}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               ) : null}
             </div>
             <Link href="/" target="_blank" rel="noreferrer" className="inline-flex h-10 items-center justify-center gap-2 rounded-[8px] bg-sky-600 px-4 text-sm font-black text-white">
               <ExternalLink className="h-4 w-4" />
-              View Website
+              {language === "ar" ? "عرض الموقع" : "View Website"}
             </Link>
             <Link href="/worker" target="_blank" rel="noreferrer" className="inline-flex h-10 items-center justify-center gap-2 rounded-[8px] bg-white px-4 text-sm font-black text-slate-700 shadow-sm dark:bg-slate-900 dark:text-slate-200">
               <ExternalLink className="h-4 w-4" />
               {t("workerBoard")}
             </Link>
+            <button
+              type="button"
+              onClick={() => setTab("settings")}
+              className={`inline-flex h-10 items-center justify-center gap-2 rounded-[8px] px-4 text-sm font-black shadow-sm transition ${
+                tab === "settings"
+                  ? "bg-sky-600 text-white"
+                  : "bg-white text-slate-700 hover:bg-sky-50 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              }`}
+            >
+              <SettingsIcon className="h-4 w-4" />
+              {language === "ar" ? "الإعدادات" : "Settings"}
+            </button>
             <LanguageSwitcher variant="surface" />
             <button type="button" onClick={logout} className="inline-flex h-10 items-center justify-center gap-2 rounded-[8px] bg-slate-950 px-4 text-sm font-black text-white dark:bg-white dark:text-slate-950">
               <LogOut className="h-4 w-4" />
@@ -575,7 +780,7 @@ export function AdminDashboard({
         </div>
 
         <nav className="mt-5 grid gap-2 rounded-[8px] bg-white p-2 shadow-sm dark:bg-slate-900 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-6">
-          <TabButton active={tab === "todayOps"} onClick={() => setTab("todayOps")} icon={<CalendarDays className="h-4 w-4" />} label={language === "ar" ? "متابعة اليوم" : "Today"} value={todayBookings.length} />
+          <TabButton active={tab === "todayOps"} onClick={() => setTab("todayOps")} icon={<CalendarDays className="h-4 w-4" />} label={language === "ar" ? "حجوزات الفجر القادم" : "Next dawn bookings"} value={dawnConfirmedBookings.length} />
           <TabButton active={tab === "customers"} onClick={() => setTab("customers")} icon={<Users className="h-4 w-4" />} label={t("customers")} value={customers.length} />
           <TabButton active={tab === "allBookings"} onClick={() => setTab("allBookings")} icon={<ClipboardList className="h-4 w-4" />} label={t("allBookings")} value={bookings.length} />
           <TabButton active={tab === "pendingBookings"} onClick={() => setTab("pendingBookings")} icon={<Hourglass className="h-4 w-4" />} label={t("pendingBookings")} value={pendingBookings} />
@@ -583,8 +788,7 @@ export function AdminDashboard({
           <TabButton active={tab === "cancelledBookings"} onClick={() => setTab("cancelledBookings")} icon={<Ban className="h-4 w-4" />} label={t("cancelledBookings")} value={cancelledBookings} />
           <TabButton active={tab === "completedWashes"} onClick={() => setTab("completedWashes")} icon={<Droplets className="h-4 w-4" />} label={t("completedWashes")} value={completedWashes} />
           <TabButton active={tab === "promoCodes"} onClick={() => setTab("promoCodes")} icon={<BadgePercent className="h-4 w-4" />} label={t("promoCodes")} value={promos.length} />
-          <TabButton active={tab === "revenue"} onClick={() => setTab("revenue")} icon={<WalletCards className="h-4 w-4" />} label={t("revenue")} value={`${confirmedRevenue} EGP`} />
-          <TabButton active={tab === "settings"} onClick={() => setTab("settings")} icon={<SlidersHorizontal className="h-4 w-4" />} label={language === "ar" ? "الإعدادات" : "Settings"} value={settings.servicePriceEgp} />
+          <TabButton active={tab === "revenue"} onClick={() => setTab("revenue")} icon={<WalletCards className="h-4 w-4" />} label={t("revenue")} value={revenueVisible ? `${confirmedRevenue} EGP` : "••••••"} />
           <TabButton active={tab === "campaigns"} onClick={() => setTab("campaigns")} icon={<Megaphone className="h-4 w-4" />} label={language === "ar" ? "العروض الذكية" : "Smart Offers"} value={customers.length} />
           <TabButton active={tab === "complaints"} onClick={() => setTab("complaints")} icon={<MessageSquareWarning className="h-4 w-4" />} label={language === "ar" ? "الشكاوى" : "Complaints"} value={complaints.length} />
           <TabButton active={tab === "workers"} onClick={() => setTab("workers")} icon={<UserCog className="h-4 w-4" />} label={language === "ar" ? "العمال" : "Workers"} value={workers.length} />
@@ -592,19 +796,19 @@ export function AdminDashboard({
 
         {tab === "todayOps" ? (
           <TodayOperationsPanel
-            bookings={todayBookings}
+            bookings={displayedDawnBookings}
+            allDateBookings={todayBookings}
             workers={workers}
             settings={settings}
             language={language}
-            todayValue={todayValue}
+            todayValue={operationDateValue}
+            currentOperationDateValue={currentOperationDateValue}
             analyticsTime={analyticsTime}
-            stats={{
-              total: todayBookings.length,
-              pending: todayPending,
-              confirmed: todayConfirmed,
-              completed: todayCompleted,
-              remaining: todayRemaining
-            }}
+            areaFilter={operationAreaFilter}
+            onDateChange={setOperationDateFilter}
+            onResetDate={() => setOperationDateFilter("")}
+            onAreaFilterChange={setOperationAreaFilter}
+            onMarkWashed={(bookingId) => requestStatusChange(bookingId, "Completed")}
             onOpenBooking={setSelectedBookingId}
           />
         ) : null}
@@ -619,6 +823,11 @@ export function AdminDashboard({
               setAreaFilter={setAreaFilter}
               setQuery={setQuery}
               settings={settings}
+              onReset={() => {
+                setDateFilter("");
+                setAreaFilter("");
+                setQuery("");
+              }}
             />
             <div className="mt-3 flex justify-end">
               <button type="button" onClick={requestDeleteAllBookings} disabled={bookings.length === 0} className="inline-flex h-10 items-center gap-2 rounded-[8px] bg-rose-600 px-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-400">
@@ -627,7 +836,7 @@ export function AdminDashboard({
               </button>
             </div>
             <section className="mt-4 grid gap-3">
-              {displayedBookings.map((booking) => (
+              {pagedBookings.map((booking) => (
                 <article key={booking.id} onClick={() => setSelectedBookingId(booking.id)} className="cursor-pointer rounded-[8px] bg-white p-4 shadow-sm transition hover:shadow-md dark:bg-slate-900">
                   <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr_1fr]">
                     <div>
@@ -663,7 +872,7 @@ export function AdminDashboard({
 
                   <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto_auto]">
                     <div onClick={(event) => event.stopPropagation()}>
-                      <StatusSelect label={t("bookingStatus")} value={normalizedBookingStatus(booking.bookingStatus)} options={BOOKING_STATUSES} language={language} onChange={(value) => updateBooking(booking.id, { bookingStatus: value as Booking["bookingStatus"] })} />
+                      <StatusSelect label={t("bookingStatus")} value={normalizedBookingStatus(booking.bookingStatus)} options={BOOKING_STATUSES} language={language} onChange={(value) => requestStatusChange(booking.id, value as Booking["bookingStatus"])} />
                     </div>
                     {primaryBookingAction(booking) ? (
                       <button type="button" onClick={(event) => { event.stopPropagation(); runPrimaryBookingAction(booking); }} className="inline-flex h-12 items-center justify-center gap-2 self-end rounded-[8px] bg-emerald-500 px-4 text-sm font-black text-white">
@@ -679,6 +888,9 @@ export function AdminDashboard({
                 </article>
               ))}
               {displayedBookings.length === 0 ? <Empty text={t("noBookings")} /> : null}
+              {displayedBookings.length > PAGE_SIZE ? (
+                <Pagination page={currentBookingsPage} pages={bookingPages} total={displayedBookings.length} language={language} onPageChange={setBookingsPage} />
+              ) : null}
             </section>
           </>
         ) : null}
@@ -718,7 +930,7 @@ export function AdminDashboard({
                     </tr>
                   </thead>
                   <tbody>
-                    {customers.map((customer) => (
+                    {pagedCustomers.map((customer) => (
                       <tr key={customer.phoneNumber} className="border-t border-slate-100 dark:border-slate-800">
                         <td className="p-3 font-bold text-slate-950 dark:text-white">{editingCustomerPhone === customer.phoneNumber && editingCustomer ? <SmallInput value={editingCustomer.customerName} onChange={(value) => setEditingCustomer({ ...editingCustomer, customerName: value })} /> : customer.customerName}</td>
                         <td className="p-3 text-slate-600 dark:text-slate-300">{editingCustomerPhone === customer.phoneNumber && editingCustomer ? <SmallInput value={editingCustomer.phoneNumber} onChange={(value) => setEditingCustomer({ ...editingCustomer, phoneNumber: value })} /> : customer.phoneNumber}</td>
@@ -748,6 +960,11 @@ export function AdminDashboard({
                 </table>
               </div>
             )}
+            {customers.length > PAGE_SIZE ? (
+              <div className="border-t border-slate-100 p-3 dark:border-slate-800">
+                <Pagination page={currentCustomersPage} pages={customerPages} total={customers.length} language={language} onPageChange={setCustomersPage} />
+              </div>
+            ) : null}
           </section>
         ) : null}
 
@@ -756,10 +973,6 @@ export function AdminDashboard({
             <div className="rounded-[8px] bg-white p-4 shadow-sm dark:bg-slate-900">
               <h2 className="text-lg font-black text-slate-950 dark:text-white">{t("addPromoCode")}</h2>
               <div className="mt-4 grid gap-3">
-                <label>
-                  <span className="label">{t("promoCode")}</span>
-                  <input className="field" value={promoForm.code} onChange={(event) => setPromoForm({ ...promoForm, code: event.target.value.toLowerCase() })} placeholder="free-wash" />
-                </label>
                 <label>
                   <span className="label">{t("promoLabel")}</span>
                   <input className="field" value={promoForm.label} onChange={(event) => setPromoForm({ ...promoForm, label: event.target.value })} />
@@ -867,10 +1080,14 @@ export function AdminDashboard({
             <AnalyticsCard title={t("bookingsPerDay")} items={Object.entries(dailyCounts).map(([date, count]) => [formatDisplayDate(date, language), `${count}/${settings.maxBookingsPerDay}`])} />
             <AnalyticsCard title={t("topAreas")} items={topAreas.map(([area, count]) => [area, String(count)])} />
             <div className="rounded-[8px] bg-white p-4 shadow-sm dark:bg-slate-900">
-              <p className="text-sm font-bold text-slate-500">{t("repeatCustomers")}</p>
-              <p className="mt-2 text-4xl font-black text-slate-950 dark:text-white">{repeatCustomers}</p>
-              <p className="mt-4 text-sm font-bold text-slate-500">{t("revenue")}</p>
-              <p className="mt-2 text-4xl font-black text-slate-950 dark:text-white">{confirmedRevenue} EGP</p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-bold text-slate-500">{t("revenue")}</p>
+                <button type="button" onClick={() => setRevenueVisible((current) => !current)} className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-slate-100 px-3 text-xs font-black text-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                  {revenueVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {revenueVisible ? (language === "ar" ? "إخفاء" : "Hide") : language === "ar" ? "إظهار" : "Show"}
+                </button>
+              </div>
+              <p className="mt-2 text-4xl font-black text-slate-950 dark:text-white">{revenueVisible ? `${confirmedRevenue} EGP` : "••••••"}</p>
             </div>
             <AnalyticsCard
               title={t("smartAnalytics")}
@@ -902,7 +1119,22 @@ export function AdminDashboard({
           onClose={() => setSelectedBookingId("")}
           onDelete={() => requestDeleteBooking(selectedBooking)}
           onPrimaryAction={() => runPrimaryBookingAction(selectedBooking)}
-          onStatusChange={(status) => updateBooking(selectedBooking.id, { bookingStatus: status })}
+          onStatusChange={(status) => requestStatusChange(selectedBooking.id, status)}
+          t={t}
+        />
+      ) : null}
+      {pendingStatusChange ? (
+        <ConfirmStatusChangeModal
+          change={pendingStatusChange}
+          workers={workers}
+          workerId={pendingStatusWorkerId}
+          onWorkerChange={setPendingStatusWorkerId}
+          language={language}
+          onCancel={() => {
+            setPendingStatusChange(null);
+            setPendingStatusWorkerId("");
+          }}
+          onConfirm={confirmPendingStatusChange}
           t={t}
         />
       ) : null}
@@ -927,10 +1159,11 @@ function Filters(props: {
   setDateFilter: (value: string) => void;
   setAreaFilter: (value: string) => void;
   setQuery: (value: string) => void;
+  onReset: () => void;
 }) {
   const { language, t } = useLanguage();
   return (
-    <section className="mt-4 grid gap-3 rounded-[8px] bg-white p-4 shadow-sm dark:bg-slate-900 sm:grid-cols-5">
+    <section className="mt-4 grid gap-3 rounded-[8px] bg-white p-4 shadow-sm dark:bg-slate-900 sm:grid-cols-6">
       <label>
         <span className="label">{t("bookingDate")}</span>
         <input className="field" type="date" value={props.dateFilter} onChange={(event) => props.setDateFilter(event.target.value)} />
@@ -953,50 +1186,105 @@ function Filters(props: {
           <input className="field pl-9 rtl:pl-3 rtl:pr-9" value={props.query} onChange={(event) => props.setQuery(event.target.value)} />
         </span>
       </label>
+      <div className="flex items-end">
+        <button type="button" onClick={props.onReset} className="inline-flex h-12 w-full items-center justify-center rounded-[8px] bg-slate-200 px-4 text-sm font-black text-slate-950 dark:bg-slate-800 dark:text-white">
+          {language === "ar" ? "إعادة ضبط" : "Reset"}
+        </button>
+      </div>
     </section>
   );
 }
 
 function TodayOperationsPanel({
   bookings,
+  allDateBookings,
   workers,
   settings,
   language,
   todayValue,
+  currentOperationDateValue,
   analyticsTime,
-  stats,
+  areaFilter,
+  onDateChange,
+  onResetDate,
+  onAreaFilterChange,
+  onMarkWashed,
   onOpenBooking
 }: {
   bookings: Booking[];
+  allDateBookings: Booking[];
   workers: PublicWorker[];
   settings: ServiceSettings;
   language: "en" | "ar";
   todayValue: string;
+  currentOperationDateValue: string;
   analyticsTime: number;
-  stats: { total: number; pending: number; confirmed: number; completed: number; remaining: number };
+  areaFilter: string;
+  onDateChange: (value: string) => void;
+  onResetDate: () => void;
+  onAreaFilterChange: (value: string) => void;
+  onMarkWashed: (bookingId: string) => void;
   onOpenBooking: (id: string) => void;
 }) {
+  const [reportVisible, setReportVisible] = useState(false);
   const routeUrl = buildRouteUrl(bookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) !== "Cancelled"));
-  const afterWashWindow = analyticsTime ? new Date(analyticsTime).getHours() >= 5 : false;
-  const overdue = bookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Confirmed");
+  const afterWashWindow = isPastWashDeadline(todayValue, analyticsTime);
+  const overdue = allDateBookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Confirmed");
+  const completedForDate = allDateBookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Completed");
+  const cancelledForDate = allDateBookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Cancelled");
+  const workerWashCounts = completedForDate.reduce<Record<string, number>>((acc, booking) => {
+    const workerKey = booking.completedByWorkerId || "unassigned";
+    acc[workerKey] = (acc[workerKey] || 0) + 1;
+    return acc;
+  }, {});
+  const workerWashSummary = Object.entries(workerWashCounts).map(([workerId, count]) => {
+    const workerName = workers.find((worker) => worker.id === workerId)?.name || (language === "ar" ? "غير محدد" : "Unassigned");
+    return `${workerName}: ${count}`;
+  });
+  const confirmedAreaCounts = allDateBookings.reduce<Record<string, number>>((acc, booking) => {
+    if (normalizedBookingStatus(booking.bookingStatus) === "Confirmed") {
+      acc[booking.area] = (acc[booking.area] || 0) + 1;
+    }
+    return acc;
+  }, {});
   const sortedBookings = [...bookings].sort((a, b) => a.area.localeCompare(b.area) || a.createdAt.localeCompare(b.createdAt));
   const label = {
-    title: language === "ar" ? "متابعة اليوم" : "Today Operations",
-    date: language === "ar" ? "تاريخ اليوم" : "Today",
-    total: language === "ar" ? "حجوزات اليوم" : "Today bookings",
-    pending: language === "ar" ? "معلقة" : "Pending",
-    confirmed: language === "ar" ? "مؤكدة" : "Confirmed",
-    completed: language === "ar" ? "تم الغسيل" : "Washed",
-    remaining: language === "ar" ? "متبقي" : "Remaining",
-    route: language === "ar" ? "فتح خريطة اليوم" : "Open today route",
+    title: language === "ar" ? "حجوزات الفجر القادم" : "Next dawn bookings",
+    date: language === "ar" ? "تاريخ فجر يوم" : "dawn date",
+    total: language === "ar" ? "حجوزات الفجر القادم" : "Next dawn bookings",
+    route: language === "ar" ? "فتح خريطة فجر التشغيل" : "Open dawn route",
     worker: language === "ar" ? "العامل المسؤول" : "Assigned worker",
     proof: language === "ar" ? "إثبات الصورة" : "Photo proof",
     hasProof: language === "ar" ? "مرفوعة" : "Uploaded",
     noProof: language === "ar" ? "غير مرفوعة" : "Missing",
-    noBookings: language === "ar" ? "لا توجد حجوزات اليوم." : "No bookings today.",
+    noBookings: language === "ar" ? "لا توجد حجوزات لهذا التاريخ." : "No bookings for this date.",
     overdue: language === "ar" ? "يوجد حجز مؤكد لم يتم تسجيل غسيله بعد الساعة 5 صباحًا." : "A confirmed booking has not been marked washed after 5 AM.",
-    status: language === "ar" ? "الحالة" : "Status"
+    status: language === "ar" ? "الحالة" : "Status",
+    phone: language === "ar" ? "الهاتف" : "Phone",
+    address: language === "ar" ? "العنوان" : "Address",
+    location: language === "ar" ? "موقع السيارة" : "Car location",
+    bookingDate: language === "ar" ? "تاريخ الحجز" : "Booking date",
+    allAreas: language === "ar" ? "كل المناطق" : "All areas",
+    confirmedBookings: language === "ar" ? "حجوزات مؤكدة" : "confirmed",
+    dawnReport: language === "ar" ? "تقرير نهاية الفجر" : "Dawn report",
+    washed: language === "ar" ? "تم غسلها" : "Washed",
+    late: language === "ar" ? "متأخرة" : "Late",
+    cancelled: language === "ar" ? "ملغية" : "Cancelled",
+    workerWashes: language === "ar" ? "غسلات العمال" : "Worker washes",
+    unassigned: language === "ar" ? "غير محدد" : "Unassigned",
+    showReport: language === "ar" ? "عرض التقرير" : "Show report",
+    hideReport: language === "ar" ? "إخفاء التقرير" : "Hide report",
+    sendReport: language === "ar" ? "إرسال التقرير للأدمن" : "Send report to admin",
+    washDone: language === "ar" ? "تم الغسيل" : "Washed",
+    backToCurrent: language === "ar" ? "الرجوع إلى الفجر القادم" : "Back to next dawn"
   };
+  const reportDate = todayValue ? formatDisplayDate(todayValue, language) : "-";
+  const reportLateCount = afterWashWindow ? overdue.length : 0;
+  const reportMessage =
+    language === "ar"
+      ? `تقرير نهاية الفجر - ${reportDate}\nتم غسلها: ${completedForDate.length}\nمتأخرة: ${reportLateCount}\nملغية: ${cancelledForDate.length}\nغسلات العمال:\n${workerWashSummary.length ? workerWashSummary.join("\n") : "-"}`
+      : `Dawn report - ${reportDate}\nWashed: ${completedForDate.length}\nLate: ${reportLateCount}\nCancelled: ${cancelledForDate.length}\nWorker washes:\n${workerWashSummary.length ? workerWashSummary.join("\n") : "-"}`;
+  const reportWhatsAppUrl = `https://wa.me/${toWhatsAppPhone(settings.paymentPhone)}?text=${encodeURIComponent(reportMessage)}`;
 
   return (
     <section className="mt-4 grid gap-4">
@@ -1008,7 +1296,7 @@ function TodayOperationsPanel({
               {label.date}: {todayValue ? formatDisplayDate(todayValue, language) : "-"}
             </h2>
             <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-300">
-              {stats.total}/{settings.maxBookingsPerDay} {language === "ar" ? "من الحد اليومي" : "daily capacity"}
+              {bookings.length}/{settings.maxBookingsPerDay} {language === "ar" ? "حجز مؤكد لهذا الفجر" : "confirmed bookings for this dawn"}
             </p>
           </div>
           {routeUrl ? (
@@ -1019,20 +1307,104 @@ function TodayOperationsPanel({
           ) : null}
         </div>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <TodayStat title={label.total} value={stats.total} />
-          <TodayStat title={label.pending} value={stats.pending} tone="amber" />
-          <TodayStat title={label.confirmed} value={stats.confirmed} tone="emerald" />
-          <TodayStat title={label.completed} value={stats.completed} tone="sky" />
-          <TodayStat title={label.remaining} value={stats.remaining} tone="rose" />
-        </div>
-
         {afterWashWindow && overdue.length > 0 ? (
           <div className="mt-4 rounded-[8px] border border-amber-300 bg-amber-50 p-3 text-sm font-black text-amber-950 dark:border-amber-900 dark:bg-amber-950/35 dark:text-amber-100">
             <AlertTriangle className="me-2 inline h-4 w-4" />
             {label.overdue}
           </div>
         ) : null}
+        <button
+          type="button"
+          onClick={() => setReportVisible((current) => !current)}
+          className="mt-4 inline-flex h-10 items-center justify-center rounded-[8px] bg-slate-900 px-4 text-sm font-black text-white transition hover:bg-slate-700 dark:bg-white dark:text-slate-950"
+        >
+          {reportVisible ? label.hideReport : label.showReport}
+        </button>
+        {reportVisible ? (
+        <div className="mt-4 rounded-[8px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-black text-slate-950 dark:text-white">{label.dawnReport}</h3>
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-300">{reportDate}</span>
+            </div>
+            <a href={reportWhatsAppUrl} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center justify-center gap-2 rounded-[8px] bg-emerald-600 px-4 text-sm font-black text-white transition hover:bg-emerald-500">
+              <Send className="h-4 w-4" />
+              {label.sendReport}
+            </a>
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <ReportMetric label={label.washed} value={completedForDate.length} tone="emerald" />
+            <ReportMetric label={label.late} value={reportLateCount} tone="amber" />
+            <ReportMetric label={label.cancelled} value={cancelledForDate.length} tone="rose" />
+          </div>
+          <div className="mt-3 rounded-[8px] bg-white p-3 dark:bg-slate-900">
+            <p className="text-sm font-black text-slate-600 dark:text-slate-300">{label.workerWashes}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {Object.entries(workerWashCounts).length > 0 ? (
+                Object.entries(workerWashCounts).map(([workerId, count]) => {
+                  const workerName = workers.find((worker) => worker.id === workerId)?.name || label.unassigned;
+                  return (
+                    <span key={workerId} className="inline-flex min-h-8 items-center rounded-full bg-sky-50 px-3 text-xs font-black text-sky-900 dark:bg-sky-950/45 dark:text-sky-100">
+                      {workerName}: {count}
+                    </span>
+                  );
+                })
+              ) : (
+                <span className="text-sm font-bold text-slate-500">-</span>
+              )}
+            </div>
+          </div>
+        </div>
+        ) : null}
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <button
+            type="button"
+            onClick={() => onAreaFilterChange("")}
+            className={`rounded-[8px] border p-4 text-start transition ${
+              areaFilter === ""
+                ? "border-sky-500 bg-sky-50 text-sky-950 shadow-sm dark:border-sky-700 dark:bg-sky-950/45 dark:text-sky-100"
+                : "border-slate-200 bg-slate-50 text-slate-950 hover:border-sky-200 hover:bg-sky-50 dark:border-slate-800 dark:bg-slate-800 dark:text-white dark:hover:border-sky-800 dark:hover:bg-sky-950/35"
+            }`}
+          >
+            <p className="text-sm font-black">{label.allAreas}</p>
+            <p className="mt-2 text-3xl font-black">{bookings.length}</p>
+            <p className="mt-1 text-xs font-bold opacity-70">{label.confirmedBookings}</p>
+          </button>
+          {settings.areas.filter((area) => area.active).map((area) => {
+            const count = confirmedAreaCounts[area.id] || 0;
+            const active = areaFilter === area.id;
+            return (
+              <button
+                key={area.id}
+                type="button"
+                onClick={() => onAreaFilterChange(active ? "" : area.id)}
+                className={`rounded-[8px] border p-4 text-start transition ${
+                  active
+                    ? "border-sky-500 bg-sky-50 text-sky-950 shadow-sm dark:border-sky-700 dark:bg-sky-950/45 dark:text-sky-100"
+                    : "border-slate-200 bg-slate-50 text-slate-950 hover:border-sky-200 hover:bg-sky-50 dark:border-slate-800 dark:bg-slate-800 dark:text-white dark:hover:border-sky-800 dark:hover:bg-sky-950/35"
+                }`}
+              >
+                <p className="text-sm font-black">{language === "ar" ? area.nameAr : area.nameEn}</p>
+                <p className="mt-2 text-3xl font-black">{count}</p>
+                <p className="mt-1 text-xs font-bold opacity-70">{label.confirmedBookings}</p>
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-[minmax(220px,280px)_auto] md:items-end">
+          <label>
+            <span className="label">{label.date}</span>
+            <input className="field" type="date" value={todayValue} onChange={(event) => onDateChange(event.target.value)} />
+          </label>
+          <button
+            type="button"
+            onClick={onResetDate}
+            disabled={todayValue === currentOperationDateValue}
+            className="inline-flex h-12 items-center justify-center rounded-[8px] bg-slate-900 px-4 text-sm font-black text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 dark:bg-white dark:text-slate-950 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
+          >
+            {label.backToCurrent}
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-3">
@@ -1040,33 +1412,80 @@ function TodayOperationsPanel({
           const worker = workers.find((item) => item.areas.includes(booking.area));
           const status = normalizedBookingStatus(booking.bookingStatus);
           return (
-            <button
+            <article
               key={booking.id}
-              type="button"
               onClick={() => onOpenBooking(booking.id)}
-              className="rounded-[8px] bg-white p-4 text-start shadow-sm transition hover:shadow-md dark:bg-slate-900"
+              className="cursor-pointer rounded-[8px] bg-white p-4 text-start shadow-sm transition hover:shadow-md dark:bg-slate-900"
             >
-              <div className="grid gap-3 lg:grid-cols-[1.1fr_1fr_1fr_1fr] lg:items-center">
+              <div className="grid gap-4 lg:grid-cols-[160px_1.1fr_1fr_1fr]">
+                <div className="overflow-hidden rounded-[8px] bg-slate-100 ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700">
+                  {booking.carImageDataUrl ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={booking.carImageDataUrl} alt={booking.carImageName || "Car photo"} className="h-32 w-full object-cover" />
+                  ) : booking.carImageName ? (
+                    <div className="grid h-32 place-items-center px-3 text-center text-xs font-black text-slate-600 dark:text-slate-300">
+                      <span>
+                        {language === "ar" ? "اسم الصورة موجود لكن الملف غير متاح" : "Photo name exists but file is unavailable"}
+                        <span className="mt-1 block truncate font-bold opacity-70">{booking.carImageName}</span>
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="grid h-32 place-items-center px-3 text-center text-xs font-black text-slate-500 dark:text-slate-300">
+                      {language === "ar" ? "لا توجد صورة للسيارة" : "No car photo"}
+                    </div>
+                  )}
+                </div>
                 <div>
                   <p className="text-xs font-black uppercase text-sky-700">{booking.id}</p>
-                  <h3 className="mt-1 text-lg font-black text-slate-950 dark:text-white">{booking.customerName}</h3>
-                  <p className="mt-1 text-sm font-bold text-slate-500">{booking.carBrand} {booking.carModel} - {booking.carColor}</p>
+                  <h2 className="mt-1 text-lg font-black text-slate-950 dark:text-white">{booking.customerName}</h2>
+                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{label.phone}: {booking.phoneNumber}</p>
+                  <p className="mt-1 text-sm font-bold text-slate-800 dark:text-slate-100">
+                    {booking.carBrand} {booking.carModel} - {booking.carColor}
+                    {booking.plateNumber ? ` - ${booking.plateNumber}` : ""}
+                  </p>
                 </div>
-                <div className="text-sm font-bold text-slate-600 dark:text-slate-300">
-                  <p>{areaLabel(booking.area, language)}</p>
-                  <p className="mt-1">{booking.address || "-"}</p>
+
+                <div className="text-sm leading-6 text-slate-700 dark:text-slate-300">
+                  <p>
+                    <strong>{label.worker}: </strong>{worker?.name || "-"}
+                  </p>
+                  <p>
+                    <strong>{label.proof}: </strong>{booking.washProofImageDataUrl ? label.hasProof : label.noProof}
+                  </p>
+                  <p>
+                    <strong>{label.bookingDate}: </strong>{formatDisplayDate(booking.bookingDate, language)}
+                  </p>
                 </div>
-                <div className="text-sm font-bold text-slate-600 dark:text-slate-300">
-                  <p><span className="text-slate-400">{label.worker}: </span>{worker?.name || "-"}</p>
-                  <p className="mt-1"><span className="text-slate-400">{label.proof}: </span>{booking.washProofImageDataUrl ? label.hasProof : label.noProof}</p>
-                </div>
-                <div className="flex flex-wrap gap-2 lg:justify-end">
-                  <span className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-black ${statusBadgeClass(status)}`}>
-                    {label.status}: {bookingStatusLabel(status, language)}
-                  </span>
+
+                <div className="text-sm leading-6 text-slate-700 dark:text-slate-300">
+                  <p>
+                    <strong>{label.address}: </strong>{areaLabel(booking.area, language)}{booking.address ? ` - ${booking.address}` : ""}{booking.buildingNumber ? `, ${booking.buildingNumber}` : ""}
+                  </p>
+                  {booking.carLocation ? (
+                    <a className="inline-flex items-center gap-1 font-bold text-sky-700 dark:text-sky-300" href={booking.carLocation} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
+                      <MapPin className="h-4 w-4" />
+                      {label.location}
+                    </a>
+                  ) : null}
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <span className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-black ${statusBadgeClass(status)}`}>
+                      {label.status}: {bookingStatusLabel(status, language)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onMarkWashed(booking.id);
+                      }}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-[8px] bg-emerald-600 px-4 text-sm font-black text-white shadow-sm transition hover:bg-emerald-500"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      {label.washDone}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </button>
+            </article>
           );
         })}
         {sortedBookings.length === 0 ? <Empty text={label.noBookings} /> : null}
@@ -1075,17 +1494,16 @@ function TodayOperationsPanel({
   );
 }
 
-function TodayStat({ title, value, tone = "slate" }: { title: string; value: number; tone?: "slate" | "amber" | "emerald" | "sky" | "rose" }) {
+function ReportMetric({ label, value, tone }: { label: string; value: number; tone: "emerald" | "amber" | "rose" }) {
   const tones = {
-    slate: "bg-slate-50 text-slate-950 dark:bg-slate-800 dark:text-white",
-    amber: "bg-amber-50 text-amber-950 dark:bg-amber-950/35 dark:text-amber-100",
     emerald: "bg-emerald-50 text-emerald-950 dark:bg-emerald-950/35 dark:text-emerald-100",
-    sky: "bg-sky-50 text-sky-950 dark:bg-sky-950/35 dark:text-sky-100",
+    amber: "bg-amber-50 text-amber-950 dark:bg-amber-950/35 dark:text-amber-100",
     rose: "bg-rose-50 text-rose-950 dark:bg-rose-950/35 dark:text-rose-100"
   } as const;
+
   return (
     <div className={`rounded-[8px] p-4 ${tones[tone]}`}>
-      <p className="text-sm font-black opacity-70">{title}</p>
+      <p className="text-sm font-black opacity-75">{label}</p>
       <p className="mt-2 text-3xl font-black">{value}</p>
     </div>
   );
@@ -1162,7 +1580,7 @@ function SettingsPanel({
         </div>
         <div className="mt-4 grid gap-3">
           {settings.areas.map((area, index) => (
-            <div key={`${area.id}-${index}`} className="grid gap-2 rounded-[8px] bg-slate-50 p-3 dark:bg-slate-800 sm:grid-cols-[1fr_1fr_120px_110px]">
+            <div key={index} className="grid gap-2 rounded-[8px] bg-slate-50 p-3 dark:bg-slate-800 sm:grid-cols-[1fr_1fr_120px_110px]">
               <input className="field" value={area.nameEn} onChange={(event) => updateAreaEnglishName(index, event.target.value)} placeholder="Degla Palms" />
               <input className="field" value={area.nameAr} onChange={(event) => updateArea(index, { nameAr: event.target.value })} placeholder="دجلة بالمز" dir="auto" />
               <input className="field" inputMode="numeric" value={area.priceEgp} onChange={(event) => updateArea(index, { priceEgp: Number(event.target.value || 0) })} />
@@ -1334,7 +1752,7 @@ function WorkerCard({
           ) : (
             <h2 className="text-lg font-black text-slate-950 dark:text-white">{worker.name}</h2>
           )}
-          <p className="mt-1 text-sm font-bold text-slate-500">{worker.areas.join(", ") || "-"}</p>
+          <p className="mt-1 text-sm font-bold text-slate-500">{workerAreaLabels(worker.areas, settings)}</p>
         </div>
         <div className="flex gap-2">
           {editing ? (
@@ -1441,6 +1859,12 @@ function BookingDetailsModal({
             <p className="mt-2 text-sm font-bold">{booking.carBrand} {booking.carModel}</p>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{booking.carColor}{booking.plateNumber ? ` - ${booking.plateNumber}` : ""}</p>
             {booking.carImageName ? <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{booking.carImageName}</p> : null}
+            {booking.carImageDataUrl ? (
+              <a href={booking.carImageDataUrl} target="_blank" rel="noreferrer" className="mt-3 block overflow-hidden rounded-[8px] ring-1 ring-slate-200 dark:ring-slate-700">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={booking.carImageDataUrl} alt={booking.carImageName || "Car photo"} className="max-h-72 w-full object-cover" />
+              </a>
+            ) : null}
           </div>
 
           <div className="rounded-[8px] bg-slate-50 p-4 dark:bg-slate-800">
@@ -1483,9 +1907,9 @@ function BookingDetailsModal({
           <div className="mt-3 grid gap-2">
             {(booking.timeline || []).map((item) => (
               <div key={`${item.status}-${item.createdAt}`} className="rounded-[8px] bg-white p-3 text-sm dark:bg-slate-900">
-                <p className="font-black">{item.label}</p>
+                <p className="font-black">{adminTimelineLabel(item.label, language)}</p>
                 <p className="mt-1 text-xs font-bold text-slate-500">{new Intl.DateTimeFormat(language === "ar" ? "ar-EG" : "en-EG", { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}</p>
-                {item.note ? <p className="mt-1 text-slate-600 dark:text-slate-300">{item.note}</p> : null}
+                {item.note ? <p className="mt-1 text-slate-600 dark:text-slate-300">{adminTimelineNote(item.note, language)}</p> : null}
               </div>
             ))}
           </div>
@@ -1502,6 +1926,71 @@ function BookingDetailsModal({
           <button type="button" onClick={onDelete} className="inline-flex h-12 items-center justify-center gap-2 self-end rounded-[8px] bg-rose-600 px-4 text-sm font-black text-white">
             <Trash2 className="h-4 w-4" />
             {t("delete")}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ConfirmStatusChangeModal({
+  change,
+  workers,
+  workerId,
+  onWorkerChange,
+  language,
+  onCancel,
+  onConfirm,
+  t
+}: {
+  change: PendingStatusChange;
+  workers: PublicWorker[];
+  workerId: string;
+  onWorkerChange: (value: string) => void;
+  language: "en" | "ar";
+  onCancel: () => void;
+  onConfirm: () => void;
+  t: (key: TranslationKey) => string;
+}) {
+  const actionLabel = statusConfirmationActionLabel(change.to, language);
+  const requiresWorker = change.to === "Completed";
+  const selectableWorkers = [...workers].sort((a, b) => Number(b.areas.includes(change.area)) - Number(a.areas.includes(change.area)) || a.name.localeCompare(b.name));
+  const message =
+    language === "ar"
+      ? `سيتم نقل الحجز ${change.bookingReference} الخاص بـ ${change.customerName} (${change.carLabel || "-"}) من ${bookingStatusLabel(change.from, language)} إلى ${bookingStatusLabel(change.to, language)}.`
+      : `Booking ${change.bookingReference} for ${change.customerName} (${change.carLabel || "-"}) will move from ${bookingStatusLabel(change.from, language)} to ${bookingStatusLabel(change.to, language)}.`;
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm" onClick={onCancel}>
+      <section className="w-full max-w-md rounded-[8px] bg-white p-5 text-slate-950 shadow-2xl dark:bg-slate-900 dark:text-white" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-start gap-3">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[8px] bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-200">
+            <AlertTriangle className="h-5 w-5" />
+          </span>
+          <div>
+            <h2 className="text-lg font-black">{language === "ar" ? "تأكيد تغيير حالة الحجز" : "Confirm status change"}</h2>
+            <p className="mt-2 text-sm font-bold leading-6 text-slate-600 dark:text-slate-300">{message}</p>
+          </div>
+        </div>
+        {requiresWorker ? (
+          <label className="mt-4 block">
+            <span className="label">{language === "ar" ? "العامل الذي قام بالغسيل" : "Worker who washed the car"}</span>
+            <select className="field" value={workerId} onChange={(event) => onWorkerChange(event.target.value)} required>
+              <option value="">{language === "ar" ? "اختر العامل" : "Select worker"}</option>
+              {selectableWorkers.map((worker) => (
+                <option key={worker.id} value={worker.id}>
+                  {worker.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        <div className="mt-5 grid gap-2 sm:grid-cols-2">
+          <button type="button" onClick={onCancel} className="inline-flex h-11 items-center justify-center rounded-[8px] bg-slate-100 px-4 text-sm font-black text-slate-800 dark:bg-slate-800 dark:text-slate-100">
+            {t("cancel")}
+          </button>
+          <button type="button" onClick={onConfirm} disabled={requiresWorker && !workerId} className="inline-flex h-11 items-center justify-center rounded-[8px] bg-emerald-600 px-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500">
+            {actionLabel}
           </button>
         </div>
       </section>
@@ -1552,6 +2041,16 @@ function deleteModalTitle(type: PendingDelete["type"], language: "en" | "ar", t:
   if (type === "customer") return t("deleteCustomerConfirm");
   if (type === "allCustomers") return language === "ar" ? "هل تريد مسح كل العملاء؟" : "Delete all customers?";
   return language === "ar" ? "هل تريد مسح كل الحجوزات؟" : "Delete all bookings?";
+}
+
+function workerAreaLabels(areaIds: string[], settings: ServiceSettings) {
+  if (areaIds.length === 0) return "-";
+  return areaIds
+    .map((areaId) => {
+      const area = settings.areas.find((item) => item.id === areaId);
+      return area ? `${area.nameEn} - ${area.nameAr}` : areaId;
+    })
+    .join(", ");
 }
 
 function DetailItem({ label, value }: { label: string; value: string }) {
@@ -1608,6 +2107,34 @@ function StatusSelect({ label, value, options, language, onChange }: { label: st
   );
 }
 
+function Pagination({ page, pages, total, language, onPageChange }: { page: number; pages: number; total: number; language: "en" | "ar"; onPageChange: (page: number) => void }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-[8px] bg-white p-3 text-sm font-bold text-slate-600 shadow-sm dark:bg-slate-900 dark:text-slate-300">
+      <span>
+        {language === "ar" ? "الصفحة" : "Page"} {page}/{pages} - {total}
+      </span>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => onPageChange(Math.max(1, page - 1))}
+          disabled={page <= 1}
+          className="inline-flex h-9 items-center rounded-[8px] bg-slate-100 px-3 text-xs font-black text-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-800 dark:text-slate-100"
+        >
+          {language === "ar" ? "السابق" : "Previous"}
+        </button>
+        <button
+          type="button"
+          onClick={() => onPageChange(Math.min(pages, page + 1))}
+          disabled={page >= pages}
+          className="inline-flex h-9 items-center rounded-[8px] bg-sky-600 px-3 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
+        >
+          {language === "ar" ? "التالي" : "Next"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function AnalyticsCard({ title, items }: { title: string; items: string[][] }) {
   return (
     <div className="rounded-[8px] bg-white p-4 shadow-sm dark:bg-slate-900">
@@ -1634,6 +2161,17 @@ function primaryBookingAction(booking: Booking): { label: TranslationKey; next: 
   if (status === "Pending") return { label: "paidReceived", next: "Confirmed" };
   if (status === "Confirmed") return { label: "washDone", next: "Completed" };
   return null;
+}
+
+function isSensitiveStatusChange(status: Booking["bookingStatus"]) {
+  return status === "Confirmed" || status === "Completed" || status === "Cancelled";
+}
+
+function statusConfirmationActionLabel(status: Booking["bookingStatus"], language: "en" | "ar") {
+  if (status === "Confirmed") return language === "ar" ? "تأكيد تم الدفع" : "Confirm payment";
+  if (status === "Completed") return language === "ar" ? "تأكيد تم الغسيل" : "Confirm washed";
+  if (status === "Cancelled") return language === "ar" ? "تأكيد الإلغاء" : "Confirm cancellation";
+  return language === "ar" ? "تأكيد" : "Confirm";
 }
 
 function csvCell(value: string) {
@@ -1681,6 +2219,43 @@ function bestPromoLabel(bookings: Booking[]) {
   return top ? `${top[0]} - ${top[1]}` : "-";
 }
 
+function nextPromoCode(label: string, promos: PromoCode[]) {
+  const base =
+    label
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 24) || `promo-${Math.random().toString(36).slice(2, 8)}`;
+  const existing = new Set(promos.map((promo) => promo.code));
+  if (!existing.has(base)) return base;
+
+  for (let index = 2; index < 100; index += 1) {
+    const candidate = `${base.slice(0, 28)}-${index}`;
+    if (!existing.has(candidate)) return candidate;
+  }
+
+  return `promo-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function getDawnOperationDateValue(now: Date) {
+  const operationDate = new Date(now);
+  operationDate.setHours(0, 0, 0, 0);
+  if (now.getHours() >= 10) {
+    operationDate.setDate(operationDate.getDate() + 1);
+  }
+  return toDateInputValue(operationDate);
+}
+
+function isPastWashDeadline(bookingDate: string, currentTime: number) {
+  if (!bookingDate || !currentTime) return false;
+  const now = new Date(currentTime);
+  const currentDate = toDateInputValue(now);
+  if (bookingDate < currentDate) return true;
+  if (bookingDate > currentDate) return false;
+  return now.getHours() >= 5;
+}
+
 function normalizedBookingStatus(status: string): Booking["bookingStatus"] {
   if (status === "Pending Payment" || status === "Payment Under Review") return "Pending";
   if (status === "Scheduled") return "Confirmed";
@@ -1707,6 +2282,41 @@ function bookingStatusLabel(status: string, language: "en" | "ar") {
     }
   } as const;
   return labels[language][normalized];
+}
+
+function adminTimelineLabel(label: string, language: "en" | "ar") {
+  if (language === "en") return label;
+  if (label.startsWith("Current status: ")) {
+    return `الحالة الحالية: ${bookingStatusLabel(label.replace("Current status: ", ""), language)}`;
+  }
+
+  const labels: Record<string, string> = {
+    "Booking submitted": "تم إرسال الحجز",
+    "Booking confirmed": "تم تأكيد الحجز",
+    "Auto cancelled": "تم الإلغاء تلقائيًا",
+    "Status changed to Pending": "تم تغيير الحالة إلى معلق",
+    "Status changed to Confirmed": "تم تغيير الحالة إلى مؤكد",
+    "Status changed to Completed": "تم تغيير الحالة إلى تم الغسيل",
+    "Status changed to Cancelled": "تم تغيير الحالة إلى ملغي",
+    "Vehicle washed with proof": "تم تسجيل الغسيل مع صورة إثبات",
+    "Service rated": "تم تقييم الخدمة",
+    "Customer complaint received": "تم استلام شكوى العميل"
+  };
+  return labels[label] || label;
+}
+
+function adminTimelineNote(note: string, language: "en" | "ar") {
+  if (language === "en") return note;
+  if (note.startsWith("Completed by worker ")) {
+    return `تم تنفيذ الغسيل بواسطة العامل ${note.replace("Completed by worker ", "")}`;
+  }
+
+  const notes: Record<string, string> = {
+    "Awaiting payment confirmation.": "في انتظار تأكيد الدفع.",
+    "Free wash promo applied.": "تم تطبيق بروموكود غسلة مجانية.",
+    "Payment was not received within 3 hours.": "لم يتم استلام الدفع خلال 3 ساعات."
+  };
+  return notes[note] || note;
 }
 
 function slugifyAreaName(value: string) {

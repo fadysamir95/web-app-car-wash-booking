@@ -8,7 +8,7 @@ export function LanguageSwitcher({ variant = "glass" }: { variant?: "glass" | "s
   const next = language === "en" ? "ar" : "en";
   const className =
     variant === "surface"
-      ? "inline-flex h-10 items-center justify-center gap-2 rounded-[8px] bg-white px-3 text-sm font-black text-slate-800 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-800 dark:hover:bg-slate-800"
+      ? "inline-flex h-10 items-center justify-center gap-2 rounded-[8px] border border-sky-200 bg-sky-50 px-3 text-sm font-black text-sky-950 shadow-sm transition hover:bg-sky-100 dark:border-sky-800 dark:bg-sky-950/70 dark:text-sky-100 dark:hover:bg-sky-900"
       : "inline-flex h-10 items-center justify-center gap-2 rounded-[8px] bg-white/14 px-3 text-sm font-black text-white ring-1 ring-white/20 transition hover:bg-white/20 dark:bg-slate-900/70";
 
   return (

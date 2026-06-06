@@ -1,5 +1,5 @@
 const CACHE_NAME = "car-wash-booking-v1";
-const APP_SHELL = ["/", "/my-booking", "/favicon.svg"];
+const APP_SHELL = ["/", "/my-booking", "/images/vayax-logo-transparent.png", "/images/vayax-logo-clean.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));

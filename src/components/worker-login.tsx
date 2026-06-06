@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { Lock, Loader2 } from "lucide-react";
 import { useLanguage } from "./language-provider";
 import { LanguageSwitcher } from "./language-switcher";
+import { BrandLogo } from "./brand-logo";
 
 export function WorkerLogin() {
   const { dir, t } = useLanguage();
@@ -34,9 +35,7 @@ export function WorkerLogin() {
     <main className="grid min-h-svh place-items-center bg-slate-950 px-4" dir={dir}>
       <form onSubmit={login} className="glass-panel w-full max-w-sm rounded-[8px] p-6">
         <div className="flex items-center justify-between">
-          <div className="flex h-11 w-11 items-center justify-center rounded-[8px] bg-sky-600 text-white">
-            <Lock className="h-5 w-5" />
-          </div>
+          <BrandLogo compact size="lg" bare />
           <LanguageSwitcher variant="surface" />
         </div>
         <h1 className="mt-4 text-2xl font-black text-slate-950 dark:text-white">{t("workerBoard")}</h1>

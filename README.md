@@ -1,6 +1,8 @@
-# Car Wash Booking
+# VAYAX
 
-Mobile-first web app for overnight car wash bookings in New October City, Giza.
+Mobile-first web app for VAYAX car care bookings in New October City, Giza.
+
+Slogan: `Your car, our care`
 
 ## Stack
 
@@ -17,23 +19,30 @@ The local JSON store is intentionally isolated in `src/lib/store.ts`, so it can 
 - Arabic and English language selection on first visit
 - Saved language preference with RTL/LTR switching
 - Header language switcher across customer and admin pages
-- Customer booking form with required validation
-- Six-step booking wizard
+- Customer booking form with client and server validation
+- Four-step booking wizard: customer, car location, car information, booking date
+- OTP phone verification before booking
+- Returning customer shortcut to reuse previous booking data
+- Multiple previous car selection for repeat customers
 - Supported service scope only: Giza, New October City, Degla Palms, 800 Feddan, Sakan Misr, Ebni Betak
 - Browser geolocation helper with Google Maps link fallback
-- Detailed address or GPS/Maps location required, at least one must be provided
+- Building number required, street name and GPS/Maps location optional
 - Tomorrow-first booking date rule
 - 12:00 AM to 5:00 AM booking window shown beside dates
 - Required customer acknowledgement of the wash time window
 - Maximum 20 active bookings per day
-- Payment pending confirmation flow
-- Instapay helper deep link, copy number button, QR placeholder, and WhatsApp transfer proof message
+- Confirmation page payment flow with Instapay helper, copy number, and WhatsApp transfer proof message
+- My Bookings page with latest device booking shortcut and booking tracking
 - Protected admin dashboard
-- Customers, bookings, and analytics admin views
-- Admin filters by date, area, payment status
-- Search by phone or plate number
-- Payment and booking status updates
+- Customers, bookings, revenue, smart offers, complaints, settings, workers, and next-day operations admin views
+- Admin filters by date, area, and search with reset
+- Search by phone, name, or plate number
+- Booking status updates
+- Delete single booking/customer and delete all bookings/customers with confirmation
 - Daily booking counters
+- Admin notification history with unread badge, show all, and clear all
+- Worker dashboard with proof photo upload before marking a wash completed
+- Car photo upload and admin preview
 - Dark mode support
 - Server-side validation, honeypot spam field, and basic in-memory rate limiting
 
@@ -63,9 +72,10 @@ Local development credentials are stored in `.env.local`:
 ```env
 ADMIN_PASSWORD=change-this
 ADMIN_SESSION_SECRET=change-this-to-a-long-random-value
+WORKER_PASSWORD=worker-dev-password
 ```
 
-Change both values before any real deployment.
+Change these values before any real deployment. `WORKER_PASSWORD` is used as the default worker password/fallback when the local worker data file is first created. After adding real workers from the admin dashboard, each worker can have a separate password.
 
 ## Data Storage
 
@@ -77,7 +87,7 @@ data/bookings.json
 
 This file is ignored by git because it contains customer data.
 
-Stored booking fields include customer name, phone number, car type, plate number, area, address, building number, car location, booking date, time window, promo code, payment status, booking status, and created date.
+Stored booking fields include customer name, phone number, car brand, model, color, manufacture year, plate number, optional car photo data, area, address, building number, car location, booking date, time window, promo code, payment status, booking status, and created date.
 
 The current development model also stores marketing-ready fields such as referral code, marketing consent, loyalty points, customer ID, language source, governorate, city, and area assignment.
 
@@ -102,6 +112,7 @@ create table bookings (
   car_brand text not null,
   car_model text not null,
   car_color text not null,
+  car_year text,
   plate_number text,
   car_image_url text,
   governorate text not null,

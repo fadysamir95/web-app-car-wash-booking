@@ -17,9 +17,10 @@
     "areas": [
       "sakan-misr"
     ],
-    "completedWashes": 0,
+    "completedWashes": 1,
     "createdAt": "2026-06-06T08:04:45.801Z",
-    "passwordPreview": "fady"
+    "passwordPreview": "fady",
+    "lastActivityAt": "2026-06-06T22:44:49.412Z"
   },
   {
     "id": "worker_490da3",
@@ -39,8 +40,9 @@
     "areas": [
       "degla-palms"
     ],
-    "completedWashes": 0,
+    "completedWashes": 5,
     "createdAt": "2026-06-06T01:15:39.966Z",
-    "passwordPreview": "fathi"
+    "passwordPreview": "fathi",
+    "lastActivityAt": "2026-06-06T17:06:46.353Z"
   }
 ]

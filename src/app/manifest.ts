@@ -2,9 +2,9 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Car Wash Booking",
-    short_name: "Car Wash",
-    description: "Book and track your overnight car wash in New October City.",
+    name: "VAYAX",
+    short_name: "VAYAX",
+    description: "Your car, our care",
     start_url: "/",
     scope: "/",
     display: "standalone",
@@ -13,9 +13,9 @@ export default function manifest(): MetadataRoute.Manifest {
     orientation: "portrait",
     icons: [
       {
-        src: "/favicon.svg",
-        sizes: "any",
-        type: "image/svg+xml",
+        src: "/images/vayax-logo-transparent.png",
+        sizes: "512x512",
+        type: "image/png",
         purpose: "maskable"
       }
     ]

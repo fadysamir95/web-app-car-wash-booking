@@ -30,6 +30,7 @@ export type Booking = {
   carYear?: string;
   plateNumber?: string;
   carImageName?: string;
+  carImageDataUrl?: string;
   governorate: string;
   city: string;
   area: string;
@@ -87,6 +88,8 @@ export type BookingCapacity = {
   count: number;
   remaining: number;
   fullyBooked: boolean;
+  closed?: boolean;
+  reason?: "capacity" | "cutoff";
 };
 
 export type CustomerSummary = {

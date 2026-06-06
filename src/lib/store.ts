@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { DEFAULT_SERVICE, PROMO_CODES, SERVICE_CONFIG } from "./constants";
+import { isBookingDateAllowed } from "./date";
 import { finalPriceFromPromo } from "./pricing";
 import type { Booking, BookingCapacity, BookingInput, CustomerComplaint, PromoCode, ServiceSettings } from "./types";
 
@@ -138,11 +139,15 @@ export async function getCapacity(date: string): Promise<BookingCapacity> {
   const bookings = await readBookings();
   const settings = await readSettings();
   const count = countActiveBookingsForDate(bookings, date);
+  const cutoffClosed = !isBookingDateAllowed(date);
+  const capacityClosed = count >= settings.maxBookingsPerDay;
   return {
     date,
     count,
     remaining: Math.max(settings.maxBookingsPerDay - count, 0),
-    fullyBooked: count >= settings.maxBookingsPerDay
+    fullyBooked: capacityClosed || cutoffClosed,
+    closed: capacityClosed || cutoffClosed,
+    reason: cutoffClosed ? "cutoff" : capacityClosed ? "capacity" : undefined
   };
 }
 
@@ -151,6 +156,10 @@ export async function createBooking(input: BookingInput) {
   const promoCodes = await readPromoCodes();
   const settings = await readSettings();
   const count = countActiveBookingsForDate(bookings, input.bookingDate);
+
+  if (!isBookingDateAllowed(input.bookingDate)) {
+    return { ok: false as const, error: "Booking for this wash date is closed. The latest booking time is 12:00 AM when the wash day starts." };
+  }
 
   if (count >= settings.maxBookingsPerDay) {
     return { ok: false as const, error: "This date is fully booked. Please choose another date." };
@@ -229,17 +238,24 @@ export function activePromoCodes(promos: PromoCode[]) {
 
 export async function updateBookingStatus(
   id: string,
-  updates: Partial<Pick<Booking, "paymentStatus" | "bookingStatus">>
+  updates: Partial<Pick<Booking, "paymentStatus" | "bookingStatus" | "completedByWorkerId" | "cancellationReason">>
 ) {
   const bookings = await readBookings();
   const booking = bookings.find((item) => item.id === id);
   if (!booking) return null;
 
   Object.assign(booking, normalizeStatusUpdates(updates));
+  if (updates.bookingStatus === "Completed" && updates.completedByWorkerId) {
+    booking.completedByWorkerId = updates.completedByWorkerId;
+  }
+  if (updates.bookingStatus === "Cancelled" && updates.cancellationReason) {
+    booking.cancellationReason = updates.cancellationReason;
+  }
   if (updates.bookingStatus && booking.timeline.at(-1)?.status !== updates.bookingStatus) {
     booking.timeline.push({
       status: updates.bookingStatus,
       label: `Status changed to ${updates.bookingStatus}`,
+      note: updates.cancellationReason || (updates.completedByWorkerId ? `Completed by worker ${updates.completedByWorkerId}` : undefined),
       createdAt: new Date().toISOString()
     });
   }

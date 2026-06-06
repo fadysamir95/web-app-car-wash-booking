@@ -4,19 +4,21 @@ import { PwaRegister } from "@/components/pwa-register";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Car Wash Booking | New October City",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
+  title: "VAYAX | Book your wash",
   description:
-    "Book an overnight car wash in New October City, Giza. Available from 12 AM to 5 AM.",
-  keywords: ["car wash", "booking", "New October City", "Giza", "mobile car wash"],
+    "Book trusted car care services with VAYAX in New October City, Giza.",
+  keywords: ["VAYAX", "car care", "car wash", "booking", "New October City", "Giza", "mobile car service"],
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
-    apple: "/favicon.svg"
+    icon: "/images/vayax-logo-transparent.png",
+    shortcut: "/images/vayax-logo-transparent.png",
+    apple: "/images/vayax-logo-transparent.png"
   },
   manifest: "/manifest.webmanifest",
   openGraph: {
-    title: "Car Wash Booking",
-    description: "Book your car wash from 12 AM to 5 AM in supported New October City areas.",
+    title: "VAYAX",
+    description: "Your car, our care",
+    images: ["/images/vayax-logo-clean.png"],
     type: "website"
   }
 };

@@ -43,6 +43,7 @@ export function validateBookingInput(
   const carYear = normalizeString(source.carYear);
   const plateNumber = normalizeString(source.plateNumber).toUpperCase();
   const carImageName = normalizeString(source.carImageName);
+  const carImageDataUrl = normalizeString(source.carImageDataUrl);
   const area = normalizeString(source.area);
   const address = normalizeString(source.address);
   const buildingNumber = normalizeString(source.buildingNumber);
@@ -70,7 +71,7 @@ export function validateBookingInput(
   }));
   if (!activeAreas.some((item) => item.id === area)) errors.area = "Choose one of the supported areas.";
   if (buildingNumber.length < 1) errors.buildingNumber = "Enter the building number.";
-  if (!isBookingDateAllowed(bookingDate)) errors.bookingDate = "The earliest available booking date is tomorrow.";
+  if (!isBookingDateAllowed(bookingDate)) errors.bookingDate = "Booking for this wash date is closed. The latest booking time is 12:00 AM when the wash day starts.";
   if (promoCode && !promoCodes.some((promo) => promo.active && promo.code === promoCode)) errors.promoCode = "This promo code is not valid.";
   if (!consent) errors.consent = "Consent is required to complete the booking.";
   if (!washWindowAcknowledged) errors.washWindowAcknowledged = "You must acknowledge the wash time window.";
@@ -91,6 +92,7 @@ export function validateBookingInput(
       carYear,
       plateNumber: plateNumber || undefined,
       carImageName: carImageName || undefined,
+      carImageDataUrl: carImageDataUrl.startsWith("data:image/") ? carImageDataUrl : undefined,
       governorate: DEFAULT_GOVERNORATE.id,
       city: DEFAULT_CITY.id,
       area,

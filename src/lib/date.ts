@@ -5,20 +5,24 @@ export function toDateInputValue(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
-export function getTomorrowDateValue() {
-  const tomorrow = new Date();
+export function getTomorrowDateValue(baseDate = new Date()) {
+  const tomorrow = new Date(baseDate);
   tomorrow.setHours(0, 0, 0, 0);
   tomorrow.setDate(tomorrow.getDate() + 1);
   return toDateInputValue(tomorrow);
 }
 
-export function isBookingDateAllowed(value: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  return value >= getTomorrowDateValue();
+export function getEarliestBookingDateValue(baseDate = new Date()) {
+  return getTomorrowDateValue(baseDate);
 }
 
-export function getUpcomingDateValues(days = 14) {
-  const start = new Date();
+export function isBookingDateAllowed(value: string, baseDate = new Date()) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  return value >= getEarliestBookingDateValue(baseDate);
+}
+
+export function getUpcomingDateValues(days = 14, baseDate = new Date()) {
+  const start = new Date(baseDate);
   start.setHours(0, 0, 0, 0);
   return Array.from({ length: days }, (_, index) => {
     const date = new Date(start);

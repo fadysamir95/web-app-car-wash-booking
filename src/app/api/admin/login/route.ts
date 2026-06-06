@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ADMIN_SESSION_COOKIE } from "@/lib/constants";
-import { createAdminToken, verifyAdminPassword } from "@/lib/admin";
+import { ADMIN_IDLE_TIMEOUT_SECONDS, createAdminToken, verifyAdminPassword } from "@/lib/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     httpOnly: true,
     sameSite: "strict",
     secure: process.env.NODE_ENV === "production",
-    maxAge: 60 * 60 * 8,
+    maxAge: ADMIN_IDLE_TIMEOUT_SECONDS,
     path: "/"
   });
   return response;
