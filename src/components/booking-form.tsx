@@ -12,7 +12,7 @@ import {
 import { DEFAULT_CITY, DEFAULT_GOVERNORATE, DEFAULT_SERVICE, PROMO_CODES, SERVICE_AREAS, SERVICE_CONFIG } from "@/lib/constants";
 import { formatDisplayDate, getTomorrowDateValue, getUpcomingDateValues } from "@/lib/date";
 import { finalPriceFromPromo, promoDiscountAmount, promoDisplayValue } from "@/lib/pricing";
-import type { Booking, BookingCapacity, PromoCode } from "@/lib/types";
+import type { Booking, BookingCapacity, PromoCode, ServiceSettings } from "@/lib/types";
 import { useLanguage } from "./language-provider";
 
 type FormState = {
@@ -67,6 +67,14 @@ export function BookingForm() {
   const [submitting, setSubmitting] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
   const [promoCodes, setPromoCodes] = useState<PromoCode[]>(PROMO_CODES.map((promo) => ({ ...promo, discountType: "amount", active: true })));
+  const [settings, setSettings] = useState<ServiceSettings>({
+    servicePriceEgp: DEFAULT_SERVICE.priceEgp,
+    paymentPhone: SERVICE_CONFIG.paymentPhone,
+    maxBookingsPerDay: SERVICE_CONFIG.maxBookingsPerDay,
+    washWindow: DEFAULT_SERVICE.bookingWindow,
+    washWindowAr: DEFAULT_SERVICE.bookingWindowAr,
+    areas: SERVICE_AREAS.map((area) => ({ id: area.id, nameEn: area.name.en, nameAr: area.name.ar, priceEgp: area.priceEgp, active: true }))
+  });
   const [otpCode, setOtpCode] = useState("");
   const [otpToken, setOtpToken] = useState("");
   const [otpSending, setOtpSending] = useState(false);
@@ -112,11 +120,25 @@ export function BookingForm() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/settings")
+      .then((response) => response.json())
+      .then((payload: { settings: ServiceSettings }) => {
+        if (!cancelled && payload.settings) setSettings(payload.settings);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const upcomingDates = useMemo(() => getUpcomingDateValues(10), []);
   const appliedPromo = promoCodes.find((promo) => promo.code === form.promoCode.trim().toLowerCase());
-  const promoDiscount = promoDiscountAmount(appliedPromo);
-  const finalPrice = finalPriceFromPromo(appliedPromo);
+  const promoDiscount = promoDiscountAmount(appliedPromo, settings.servicePriceEgp);
+  const finalPrice = finalPriceFromPromo(appliedPromo, settings.servicePriceEgp);
   const plateNumber = [form.plateLetters.trim(), form.plateDigits.trim()].filter(Boolean).join(" - ");
+  const washWindow = language === "ar" ? settings.washWindowAr : settings.washWindow;
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -183,6 +205,22 @@ export function BookingForm() {
 
   function goBack() {
     setStep((current) => Math.max(current - 1, 0));
+  }
+
+  function goToStep(targetStep: number) {
+    if (targetStep <= step) {
+      setStep(targetStep);
+      return;
+    }
+
+    for (let item = 0; item < targetStep; item += 1) {
+      if (!validateStep(item)) {
+        setStep(item);
+        return;
+      }
+    }
+
+    setStep(targetStep);
   }
 
   async function sendOtp() {
@@ -308,12 +346,21 @@ export function BookingForm() {
       </div>
 
       <div className="mb-6 grid grid-cols-3 gap-2">
-        {steps.map((item, index) => (
-          <button key={item} type="button" onClick={() => setStep(index)} className="min-w-0 text-start">
-            <div className={`h-2 rounded-full ${index <= step ? "bg-sky-500" : "bg-slate-200 dark:bg-slate-700"}`} />
-            <p className="mt-2 truncate text-[0.68rem] font-bold text-slate-600 dark:text-slate-300">{item}</p>
-          </button>
-        ))}
+        {steps.map((item, index) => {
+          const locked = index > step + 1;
+          return (
+            <button
+              key={item}
+              type="button"
+              onClick={() => goToStep(index)}
+              disabled={locked}
+              className={`min-w-0 text-start ${locked ? "cursor-not-allowed opacity-50" : ""}`}
+            >
+              <div className={`h-2 rounded-full ${index <= step ? "bg-sky-500" : "bg-slate-200 dark:bg-slate-700"}`} />
+              <p className="mt-2 truncate text-[0.68rem] font-bold text-slate-600 dark:text-slate-300">{item}</p>
+            </button>
+          );
+        })}
       </div>
 
       {errors.form ? <Alert>{errors.form}</Alert> : null}
@@ -362,9 +409,9 @@ export function BookingForm() {
             <Field label={t("area")} error={errors.area}>
               <select name="area" className={fieldClass(errors.area)} value={form.area} onChange={(e) => update("area", e.target.value)} required>
                 <option value="">{t("chooseArea")}</option>
-                {SERVICE_AREAS.map((area) => (
+                {settings.areas.filter((area) => area.active).map((area) => (
                   <option key={area.id} value={area.id}>
-                    {area.name[language]}
+                    {language === "ar" ? area.nameAr : area.nameEn}
                   </option>
                 ))}
               </select>
@@ -458,7 +505,7 @@ export function BookingForm() {
 
         {step === 2 ? (
           <>
-            <Field label={`${t("bookingDate")} (${language === "ar" ? DEFAULT_SERVICE.bookingWindowAr : DEFAULT_SERVICE.bookingWindow})`} error={errors.bookingDate}>
+            <Field label={`${t("bookingDate")} (${washWindow})`} error={errors.bookingDate}>
               <input name="bookingDate" className={fieldClass(errors.bookingDate)} type="date" min={getTomorrowDateValue()} value={form.bookingDate} onChange={(e) => update("bookingDate", e.target.value)} required />
               <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
                 {upcomingDates.map((date) => {
@@ -475,7 +522,7 @@ export function BookingForm() {
                       } ${full ? "cursor-not-allowed opacity-50" : ""}`}
                     >
                       <span className="block font-black">{formatDisplayDate(date, language)}</span>
-                      <span className="mt-1 block text-[0.68rem]">{language === "ar" ? DEFAULT_SERVICE.bookingWindowAr : DEFAULT_SERVICE.bookingWindow}</span>
+                      <span className="mt-1 block text-[0.68rem]">{washWindow}</span>
                       {selected ? (
                         <span className="mt-1 block font-bold">
                           {loadingCapacity ? t("checking") : capacity?.fullyBooked ? t("fullyBooked") : `${capacity?.remaining ?? "-"} ${t("left")}`}
@@ -492,7 +539,7 @@ export function BookingForm() {
             <div className="rounded-[8px] border border-sky-200 bg-sky-50 p-4 text-slate-950 dark:border-sky-900 dark:bg-sky-950/35 dark:text-sky-100">
               <div className="flex items-center justify-between gap-3 text-sm">
                 <span className="font-bold text-slate-600 dark:text-slate-300">{t("servicePrice")}</span>
-                <span className="font-black">{DEFAULT_SERVICE.priceEgp} EGP</span>
+                <span className="font-black">{settings.servicePriceEgp} EGP</span>
               </div>
               {appliedPromo ? (
                 <div className="mt-2 flex items-center justify-between gap-3 text-sm">

@@ -3,18 +3,42 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { FormEvent, ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Clock, Loader2, MapPin, MessageCircle, Search, ShieldCheck, Sparkles } from "lucide-react";
 import { BookingForm } from "@/components/booking-form";
 import { DEFAULT_SERVICE, PROMO_CODES, SERVICE_AREAS, SERVICE_CONFIG } from "@/lib/constants";
 import { formatDisplayDate } from "@/lib/date";
 import { bookingFinalPrice } from "@/lib/pricing";
 import type { Booking } from "@/lib/types";
+import type { ServiceSettings } from "@/lib/types";
 import { useLanguage } from "./language-provider";
 import { LanguageSwitcher } from "./language-switcher";
 
 export function HomePage() {
   const { language, dir, t } = useLanguage();
+  const [settings, setSettings] = useState<ServiceSettings>({
+    servicePriceEgp: DEFAULT_SERVICE.priceEgp,
+    paymentPhone: SERVICE_CONFIG.paymentPhone,
+    maxBookingsPerDay: SERVICE_CONFIG.maxBookingsPerDay,
+    washWindow: DEFAULT_SERVICE.bookingWindow,
+    washWindowAr: DEFAULT_SERVICE.bookingWindowAr,
+    areas: SERVICE_AREAS.map((area) => ({ id: area.id, nameEn: area.name.en, nameAr: area.name.ar, priceEgp: area.priceEgp, active: true }))
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/settings")
+      .then((response) => response.json())
+      .then((payload: { settings: ServiceSettings }) => {
+        if (!cancelled && payload.settings) setSettings(payload.settings);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const activeAreas = settings.areas.filter((area) => area.active);
 
   return (
     <main dir={dir}>
@@ -55,9 +79,9 @@ export function HomePage() {
               </Link>
             </div>
             <div className="mt-8 grid gap-3 text-sm text-slate-100 sm:grid-cols-3">
-              <Fact icon={<Clock className="h-4 w-4" />} title={language === "ar" ? DEFAULT_SERVICE.bookingWindowAr : DEFAULT_SERVICE.bookingWindow} />
-              <Fact icon={<MapPin className="h-4 w-4" />} title={`${SERVICE_AREAS.length} ${t("supportedAreas")}`} />
-              <Fact icon={<ShieldCheck className="h-4 w-4" />} title={`${SERVICE_CONFIG.maxBookingsPerDay} ${t("perDay")}`} />
+              <Fact icon={<Clock className="h-4 w-4" />} title={language === "ar" ? settings.washWindowAr : settings.washWindow} />
+              <Fact icon={<MapPin className="h-4 w-4" />} title={`${activeAreas.length} ${t("supportedAreas")}`} />
+              <Fact icon={<ShieldCheck className="h-4 w-4" />} title={`${settings.maxBookingsPerDay} ${t("perDay")}`} />
             </div>
           </div>
           <div className="pb-10 lg:flex lg:items-end lg:pb-4">
@@ -76,10 +100,10 @@ export function HomePage() {
         <div className="mx-auto max-w-6xl">
           <h2 className="mb-4 text-xl font-black text-slate-950 dark:text-white">{t("supportedAreas")}</h2>
           <div className="grid gap-4 sm:grid-cols-4">
-            {SERVICE_AREAS.map((area) => (
+            {activeAreas.map((area) => (
               <div key={area.id} className="rounded-[8px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
                 <p className="text-xs font-black uppercase text-sky-700">{t("area")}</p>
-                <h3 className="mt-2 text-lg font-black text-slate-950 dark:text-white">{area.name[language]}</h3>
+                <h3 className="mt-2 text-lg font-black text-slate-950 dark:text-white">{language === "ar" ? area.nameAr : area.nameEn}</h3>
                 <p className="mt-1 text-sm font-bold text-slate-500">{area.priceEgp} EGP</p>
               </div>
             ))}

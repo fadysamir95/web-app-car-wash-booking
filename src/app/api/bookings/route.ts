@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { activePromoCodes, createBooking, readBookings, readPromoCodes } from "@/lib/store";
+import { activePromoCodes, createBooking, readBookings, readPromoCodes, readSettings } from "@/lib/store";
 import { normalizePhone, validateBookingInput } from "@/lib/validation";
 import { consumeOtpToken } from "@/lib/otp";
 
@@ -31,14 +31,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ errors: { form: "Too many booking attempts. Please try again later." } }, { status: 429 });
   }
 
-  const result = validateBookingInput(body, activePromoCodes(await readPromoCodes()));
+  const [promos, settings] = await Promise.all([readPromoCodes(), readSettings()]);
+  const result = validateBookingInput(body, activePromoCodes(promos), settings);
 
   if (!result.ok) {
     return NextResponse.json({ errors: result.errors }, { status: 400 });
   }
 
   const otpToken = typeof body === "object" && body !== null && "otpToken" in body ? String((body as { otpToken?: unknown }).otpToken || "") : "";
-  if (!consumeOtpToken(result.data.phoneNumber, otpToken)) {
+  if (!(await consumeOtpToken(result.data.phoneNumber, otpToken))) {
     return NextResponse.json({ errors: { otp: "Verify your phone number before booking." } }, { status: 400 });
   }
 

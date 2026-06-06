@@ -3,11 +3,12 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { DEFAULT_SERVICE, PROMO_CODES, SERVICE_CONFIG } from "./constants";
 import { finalPriceFromPromo } from "./pricing";
-import type { Booking, BookingCapacity, BookingInput, PromoCode } from "./types";
+import type { Booking, BookingCapacity, BookingInput, CustomerComplaint, PromoCode, ServiceSettings } from "./types";
 
 const dataDir = path.join(process.cwd(), "data");
 const bookingsPath = path.join(dataDir, "bookings.json");
 const promosPath = path.join(dataDir, "promos.json");
+const settingsPath = path.join(dataDir, "settings.json");
 const pendingBookingExpiryMs = 3 * 60 * 60 * 1000;
 
 async function ensureDataFile() {
@@ -21,6 +22,11 @@ async function ensureDataFile() {
     await readFile(promosPath, "utf8");
   } catch {
     await writeFile(promosPath, JSON.stringify(defaultPromoCodes(), null, 2), "utf8");
+  }
+  try {
+    await readFile(settingsPath, "utf8");
+  } catch {
+    await writeFile(settingsPath, JSON.stringify(defaultServiceSettings(), null, 2), "utf8");
   }
 }
 
@@ -53,6 +59,23 @@ export async function readPromoCodes(): Promise<PromoCode[]> {
 export async function writePromoCodes(promos: PromoCode[]) {
   await ensureDataFile();
   await writeFile(promosPath, JSON.stringify(promos, null, 2), "utf8");
+}
+
+export async function readSettings(): Promise<ServiceSettings> {
+  await ensureDataFile();
+  const content = await readFile(settingsPath, "utf8");
+  try {
+    return normalizeSettings(JSON.parse(content) as Partial<ServiceSettings>);
+  } catch {
+    return defaultServiceSettings();
+  }
+}
+
+export async function writeSettings(settings: ServiceSettings) {
+  await ensureDataFile();
+  const normalized = normalizeSettings(settings);
+  await writeFile(settingsPath, JSON.stringify(normalized, null, 2), "utf8");
+  return normalized;
 }
 
 export async function createPromoCode(promo: PromoCode) {
@@ -113,21 +136,23 @@ export function countActiveBookingsForDate(bookings: Booking[], date: string) {
 
 export async function getCapacity(date: string): Promise<BookingCapacity> {
   const bookings = await readBookings();
+  const settings = await readSettings();
   const count = countActiveBookingsForDate(bookings, date);
   return {
     date,
     count,
-    remaining: Math.max(SERVICE_CONFIG.maxBookingsPerDay - count, 0),
-    fullyBooked: count >= SERVICE_CONFIG.maxBookingsPerDay
+    remaining: Math.max(settings.maxBookingsPerDay - count, 0),
+    fullyBooked: count >= settings.maxBookingsPerDay
   };
 }
 
 export async function createBooking(input: BookingInput) {
   const bookings = await readBookings();
   const promoCodes = await readPromoCodes();
+  const settings = await readSettings();
   const count = countActiveBookingsForDate(bookings, input.bookingDate);
 
-  if (count >= SERVICE_CONFIG.maxBookingsPerDay) {
+  if (count >= settings.maxBookingsPerDay) {
     return { ok: false as const, error: "This date is fully booked. Please choose another date." };
   }
 
@@ -155,7 +180,7 @@ export async function createBooking(input: BookingInput) {
   }
 
   const appliedPromo = input.promoCode ? activePromoCodes(promoCodes).find((promo) => promo.code === input.promoCode) : null;
-  const finalPrice = finalPriceFromPromo(appliedPromo);
+  const finalPrice = finalPriceFromPromo(appliedPromo, settings.servicePriceEgp);
   const isFreeBooking = finalPrice === 0;
   const createdAt = new Date();
   const expiresAt = new Date(createdAt.getTime() + pendingBookingExpiryMs);
@@ -166,7 +191,7 @@ export async function createBooking(input: BookingInput) {
     ...input,
     consent: true,
     washWindowAcknowledged: true,
-    bookingTimeWindow: DEFAULT_SERVICE.bookingWindow,
+    bookingTimeWindow: settings.washWindow,
     finalPriceEgp: finalPrice,
     loyaltyPoints: input.loyaltyPoints || 0,
     paymentStatus: isFreeBooking ? "Verified" : "Pending",
@@ -239,6 +264,48 @@ export async function rateBooking(id: string, rating: number, ratingComment?: st
   return booking;
 }
 
+export async function addBookingComplaint(id: string, complaint: CustomerComplaint) {
+  const bookings = await readBookings();
+  const booking = bookings.find((item) => item.id === id);
+  if (!booking || !booking.rating || booking.rating >= 3) return null;
+
+  booking.complaint = complaint;
+  booking.timeline.push({
+    status: booking.bookingStatus,
+    label: "Customer complaint received",
+    note: complaint.text,
+    createdAt: complaint.createdAt
+  });
+
+  await writeBookings(bookings);
+  return booking;
+}
+
+export async function completeBookingWithProof(
+  id: string,
+  proof: { imageName: string; imageDataUrl: string; workerId?: string }
+) {
+  const bookings = await readBookings();
+  const booking = bookings.find((item) => item.id === id);
+  if (!booking) return null;
+
+  const now = new Date().toISOString();
+  Object.assign(booking, normalizeStatusUpdates({ bookingStatus: "Completed" }));
+  booking.washProofImageName = proof.imageName;
+  booking.washProofImageDataUrl = proof.imageDataUrl;
+  booking.washProofUploadedAt = now;
+  booking.completedByWorkerId = proof.workerId;
+  booking.timeline.push({
+    status: "Completed",
+    label: "Vehicle washed with proof",
+    note: proof.imageName,
+    createdAt: now
+  });
+
+  await writeBookings(bookings);
+  return booking;
+}
+
 function migrateBookings(bookings: Booking[]) {
   let changed = false;
   const migrated = bookings.map((booking) => {
@@ -261,6 +328,53 @@ function migrateBookings(bookings: Booking[]) {
   });
   if (changed) void writeBookings(migrated);
   return migrated;
+}
+
+function defaultServiceSettings(): ServiceSettings {
+  const areaNamesAr: Record<string, string> = {
+    "degla-palms": "دجلة بالمز",
+    "800-feddan": "800 فدان",
+    "sakan-misr": "سكن مصر",
+    "ebni-betak": "ابني بيتك"
+  };
+  return {
+    servicePriceEgp: DEFAULT_SERVICE.priceEgp,
+    paymentPhone: SERVICE_CONFIG.paymentPhone,
+    maxBookingsPerDay: SERVICE_CONFIG.maxBookingsPerDay,
+    washWindow: DEFAULT_SERVICE.bookingWindow,
+    washWindowAr: "12:00 صباحًا إلى 5:00 صباحًا",
+    areas: SERVICE_CONFIG.governorates[0].cities[0].areas.map((area) => ({
+      id: area.id,
+      nameEn: area.name.en,
+      nameAr: areaNamesAr[area.id] || area.name.en,
+      priceEgp: area.priceEgp,
+      active: true
+    }))
+  };
+}
+
+function normalizeSettings(settings: Partial<ServiceSettings>): ServiceSettings {
+  const defaults = defaultServiceSettings();
+  const areas = Array.isArray(settings.areas) && settings.areas.length > 0 ? settings.areas : defaults.areas;
+  return {
+    servicePriceEgp: positiveNumber(settings.servicePriceEgp, defaults.servicePriceEgp),
+    paymentPhone: String(settings.paymentPhone || defaults.paymentPhone).replace(/\D/g, "") || defaults.paymentPhone,
+    maxBookingsPerDay: Math.max(1, Math.min(100, Math.round(positiveNumber(settings.maxBookingsPerDay, defaults.maxBookingsPerDay)))),
+    washWindow: String(settings.washWindow || defaults.washWindow).trim(),
+    washWindowAr: String(settings.washWindowAr || defaults.washWindowAr).trim(),
+    areas: areas.map((area) => ({
+      id: String(area.id || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "-"),
+      nameEn: String(area.nameEn || "").trim() || "Area",
+      nameAr: String(area.nameAr || area.nameEn || "").trim() || "منطقة",
+      priceEgp: positiveNumber(area.priceEgp, settings.servicePriceEgp || defaults.servicePriceEgp),
+      active: area.active !== false
+    })).filter((area) => area.id)
+  };
+}
+
+function positiveNumber(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 export async function deleteBookingData(id: string) {

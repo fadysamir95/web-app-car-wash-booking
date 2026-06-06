@@ -157,6 +157,7 @@ function RatingForm({ booking, onRated }: { booking: Booking; onRated: (booking:
   const { t } = useLanguage();
   const [rating, setRating] = useState(booking.rating || 5);
   const [ratingComment, setRatingComment] = useState(booking.ratingComment || "");
+  const [complaint, setComplaint] = useState(booking.complaint?.text || "");
   const [saving, setSaving] = useState(false);
 
   async function submitRating() {
@@ -171,10 +172,32 @@ function RatingForm({ booking, onRated }: { booking: Booking; onRated: (booking:
     if (response.ok && payload.booking) onRated(payload.booking);
   }
 
+  async function submitComplaint() {
+    setSaving(true);
+    const response = await fetch(`/api/bookings/${booking.id}/complaint`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ complaint })
+    });
+    const payload = (await response.json().catch(() => ({}))) as { booking?: Booking };
+    setSaving(false);
+    if (response.ok && payload.booking) onRated(payload.booking);
+  }
+
   if (booking.rating) {
     return (
       <div className="mt-4 rounded-[8px] border border-emerald-300 bg-emerald-50 p-4 text-sm font-bold text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/35 dark:text-emerald-100">
-        {t("ratingThanks")} - {booking.rating}/5
+        <p>{t("ratingThanks")} - {booking.rating}/5</p>
+        {booking.rating < 3 && !booking.complaint ? (
+          <div className="mt-4 rounded-[8px] bg-white p-3 dark:bg-slate-900">
+            <p className="text-sm font-black text-slate-950 dark:text-white">Tell us what happened so we can fix it.</p>
+            <textarea className="field mt-3 min-h-24" value={complaint} onChange={(event) => setComplaint(event.target.value)} placeholder="Write your complaint here" />
+            <button type="button" onClick={submitComplaint} disabled={saving || complaint.trim().length < 10} className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-[8px] bg-rose-600 px-4 text-sm font-black text-white disabled:opacity-60">
+              Send complaint
+            </button>
+          </div>
+        ) : null}
+        {booking.complaint ? <p className="mt-3 rounded-[8px] bg-white p-3 text-sm text-slate-700 dark:bg-slate-900 dark:text-slate-200">Complaint received. We will contact you soon.</p> : null}
       </div>
     );
   }

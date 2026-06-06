@@ -2,14 +2,15 @@
 
 import { useMemo, useState } from "react";
 import { Check, LogOut, Map, MapPin } from "lucide-react";
-import type { Booking } from "@/lib/types";
+import type { Booking, PublicWorker } from "@/lib/types";
 import { formatDisplayDate } from "@/lib/date";
 import { useLanguage } from "./language-provider";
 import { LanguageSwitcher } from "./language-switcher";
 
-export function WorkerBoard({ initialBookings }: { initialBookings: Booking[] }) {
+export function WorkerBoard({ initialBookings, worker }: { initialBookings: Booking[]; worker: PublicWorker | null }) {
   const { language, dir, t } = useLanguage();
   const [bookings, setBookings] = useState(initialBookings);
+  const [proofs, setProofs] = useState<Record<string, { imageName: string; imageDataUrl: string }>>({});
   const activeBookings = useMemo(
     () =>
       bookings
@@ -20,10 +21,27 @@ export function WorkerBoard({ initialBookings }: { initialBookings: Booking[] })
   const routeUrl = useMemo(() => buildRouteUrl(activeBookings), [activeBookings]);
 
   async function markWashed(booking: Booking) {
-    const response = await fetch(`/api/worker/bookings/${booking.id}/complete`, { method: "POST" });
+    const proof = proofs[booking.id];
+    if (!proof) return;
+    const response = await fetch(`/api/worker/bookings/${booking.id}/complete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(proof)
+    });
     if (!response.ok) return;
     const payload = (await response.json()) as { booking: Booking };
     setBookings((current) => current.map((item) => (item.id === booking.id ? payload.booking : item)));
+  }
+
+  function captureProof(bookingId: string, file: File | null) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setProofs((current) => ({ ...current, [bookingId]: { imageName: file.name, imageDataUrl: reader.result as string } }));
+      }
+    };
+    reader.readAsDataURL(file);
   }
 
   async function logout() {
@@ -38,6 +56,7 @@ export function WorkerBoard({ initialBookings }: { initialBookings: Booking[] })
           <div>
             <p className="text-sm font-black uppercase text-sky-700">{t("brand")}</p>
             <h1 className="text-3xl font-black text-slate-950 dark:text-white">{t("workerBoard")}</h1>
+            {worker ? <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-300">{worker.name}</p> : null}
           </div>
           <div className="flex gap-2">
             <LanguageSwitcher variant="surface" />
@@ -95,7 +114,11 @@ export function WorkerBoard({ initialBookings }: { initialBookings: Booking[] })
                     {t("carLocation")}
                   </a>
                 ) : null}
-                <button type="button" onClick={() => markWashed(booking)} className="inline-flex h-11 items-center justify-center gap-2 rounded-[8px] bg-slate-950 px-4 text-sm font-black text-white dark:bg-white dark:text-slate-950">
+                <label className="inline-flex h-11 cursor-pointer items-center justify-center rounded-[8px] bg-white px-4 text-sm font-black text-slate-800 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-100 dark:ring-slate-700">
+                  {proofs[booking.id]?.imageName || "Upload proof photo"}
+                  <input className="sr-only" type="file" accept="image/*" capture="environment" onChange={(event) => captureProof(booking.id, event.target.files?.[0] || null)} />
+                </label>
+                <button type="button" disabled={!proofs[booking.id]} onClick={() => markWashed(booking)} className="inline-flex h-11 items-center justify-center gap-2 rounded-[8px] bg-slate-950 px-4 text-sm font-black text-white disabled:bg-slate-400 dark:bg-white dark:text-slate-950 dark:disabled:bg-slate-700">
                   <Check className="h-4 w-4" />
                   {t("washDone")}
                 </button>

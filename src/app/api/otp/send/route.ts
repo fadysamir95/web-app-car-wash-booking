@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Too many OTP requests." }, { status: 429 });
   }
 
-  const code = createOtp(phoneNumber);
+  const code = await createOtp(phoneNumber);
 
   return NextResponse.json({
     ok: true,

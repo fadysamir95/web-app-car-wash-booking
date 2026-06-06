@@ -1,4 +1,4 @@
-import type { BookingStatus, PaymentStatus, ServiceArea } from "./constants";
+import type { BookingStatus, PaymentStatus } from "./constants";
 
 export type BookingTimelineEvent = {
   status: BookingStatus;
@@ -31,7 +31,7 @@ export type Booking = {
   carImageName?: string;
   governorate: string;
   city: string;
-  area: ServiceArea;
+  area: string;
   areaName: string;
   address?: string;
   buildingNumber?: string;
@@ -53,6 +53,11 @@ export type Booking = {
   rating?: number;
   ratingComment?: string;
   ratedAt?: string;
+  complaint?: CustomerComplaint;
+  washProofImageName?: string;
+  washProofImageDataUrl?: string;
+  washProofUploadedAt?: string;
+  completedByWorkerId?: string;
   timeline: BookingTimelineEvent[];
   createdAt: string;
 };
@@ -95,4 +100,37 @@ export type CustomerSummary = {
   totalBookings: number;
   lastBookingDate: string;
   loyaltyPoints: number;
+};
+
+export type ServiceSettings = {
+  servicePriceEgp: number;
+  paymentPhone: string;
+  maxBookingsPerDay: number;
+  washWindow: string;
+  washWindowAr: string;
+  areas: Array<{
+    id: string;
+    nameEn: string;
+    nameAr: string;
+    priceEgp: number;
+    active: boolean;
+  }>;
+};
+
+export type Worker = {
+  id: string;
+  name: string;
+  passwordHash: string;
+  passwordPreview?: string;
+  areas: string[];
+  completedWashes: number;
+  lastActivityAt?: string;
+  createdAt: string;
+};
+
+export type PublicWorker = Omit<Worker, "passwordHash">;
+
+export type CustomerComplaint = {
+  text: string;
+  createdAt: string;
 };

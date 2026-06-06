@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Too many attempts." }, { status: 429 });
   }
 
-  if (!body?.password || !verifyAdminPassword(body.password)) {
+  if (!body?.password || !(await verifyAdminPassword(body.password))) {
     return NextResponse.json({ error: "Invalid password." }, { status: 401 });
   }
 

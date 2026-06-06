@@ -6,7 +6,7 @@ import { CheckCircle2, Copy, MessageCircle, WalletCards } from "lucide-react";
 import { PROMO_CODES, SERVICE_CONFIG } from "@/lib/constants";
 import { formatDisplayDate } from "@/lib/date";
 import { finalPriceFromPromo } from "@/lib/pricing";
-import type { Booking } from "@/lib/types";
+import type { Booking, ServiceSettings } from "@/lib/types";
 import { useLanguage } from "@/components/language-provider";
 import { LanguageSwitcher } from "@/components/language-switcher";
 
@@ -14,6 +14,7 @@ export default function SuccessPage() {
   const { language, dir, t } = useLanguage();
   const [copied, setCopied] = useState(false);
   const [now, setNow] = useState(0);
+  const [settings, setSettings] = useState<ServiceSettings | null>(null);
   const [booking] = useState<Booking | null>(() => {
     if (typeof window === "undefined") return null;
     const raw = sessionStorage.getItem("latestBooking");
@@ -25,10 +26,10 @@ export default function SuccessPage() {
       language === "ar"
         ? `مرحبًا، لقد قمت بتحويل رسوم حجز غسيل السيارة.\nرقم الحجز: ${booking?.id || ""}\nالاسم: ${booking?.customerName || ""}\nرقم الهاتف: ${booking?.phoneNumber || ""}`
         : `Hello, I have completed the payment for my car wash booking.\nBooking Reference: ${booking?.id || ""}\nName: ${booking?.customerName || ""}\nPhone: ${booking?.phoneNumber || ""}`;
-    return `https://wa.me/2${SERVICE_CONFIG.paymentPhone}?text=${encodeURIComponent(message)}`;
-  }, [booking, language]);
+    return `https://wa.me/2${settings?.paymentPhone || SERVICE_CONFIG.paymentPhone}?text=${encodeURIComponent(message)}`;
+  }, [booking, language, settings?.paymentPhone]);
   const appliedPromo = booking?.promoCode ? PROMO_CODES.find((promo) => promo.code === booking.promoCode) : null;
-  const servicePrice = booking?.finalPriceEgp ?? finalPriceFromPromo(appliedPromo ? { ...appliedPromo, active: true } : null);
+  const servicePrice = booking?.finalPriceEgp ?? finalPriceFromPromo(appliedPromo ? { ...appliedPromo, active: true } : null, settings?.servicePriceEgp || undefined);
   const isFreeBooking = servicePrice === 0;
   const remainingMs = booking?.expiresAt && !isFreeBooking && now > 0 ? Math.max(new Date(booking.expiresAt).getTime() - now, 0) : null;
 
@@ -41,8 +42,21 @@ export default function SuccessPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/settings")
+      .then((response) => response.json())
+      .then((payload: { settings: ServiceSettings }) => {
+        if (!cancelled) setSettings(payload.settings);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function copyPaymentNumber() {
-    await navigator.clipboard.writeText(SERVICE_CONFIG.paymentPhone);
+    await navigator.clipboard.writeText(settings?.paymentPhone || SERVICE_CONFIG.paymentPhone);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1600);
   }
@@ -95,7 +109,7 @@ export default function SuccessPage() {
             {!isFreeBooking ? (
               <div className="flex flex-col gap-3 rounded-[8px] bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
                 <p>
-                  <strong>{t("paymentNumber")}:</strong> {SERVICE_CONFIG.paymentPhone}
+                  <strong>{t("paymentNumber")}:</strong> {settings?.paymentPhone || SERVICE_CONFIG.paymentPhone}
                 </p>
                 <button type="button" onClick={copyPaymentNumber} className="inline-flex h-11 items-center justify-center gap-2 rounded-[8px] bg-slate-950 px-4 text-sm font-black text-white">
                   <Copy className="h-4 w-4" />
@@ -119,7 +133,7 @@ export default function SuccessPage() {
             <>
               <div className="mt-6 grid gap-3">
                 <a
-                  href={`instapay://pay?phone=${SERVICE_CONFIG.paymentPhone}&amount=${servicePrice}`}
+                  href={`instapay://pay?phone=${settings?.paymentPhone || SERVICE_CONFIG.paymentPhone}&amount=${servicePrice}`}
                   className="inline-flex h-14 items-center justify-center gap-2 rounded-[8px] bg-sky-600 px-4 text-base font-black text-white"
                 >
                   <WalletCards className="h-4 w-4" />

@@ -1,15 +1,16 @@
 import { DEFAULT_SERVICE } from "./constants";
 import type { Booking, PromoCode } from "./types";
 
-export function promoDiscountAmount(promo: PromoCode | null | undefined, basePrice = DEFAULT_SERVICE.priceEgp) {
+export function promoDiscountAmount(promo: PromoCode | null | undefined, basePrice: number = DEFAULT_SERVICE.priceEgp) {
   if (!promo) return 0;
+  if (promo.type === "free_wash") return basePrice;
   if (promo.discountType === "percentage") {
     return Math.min(basePrice, Math.round(basePrice * Math.min(Math.max(promo.discountPercent || 0, 0), 100) / 100));
   }
   return Math.min(basePrice, Math.max(promo.discountEgp || 0, 0));
 }
 
-export function finalPriceFromPromo(promo: PromoCode | null | undefined, basePrice = DEFAULT_SERVICE.priceEgp) {
+export function finalPriceFromPromo(promo: PromoCode | null | undefined, basePrice: number = DEFAULT_SERVICE.priceEgp) {
   return Math.max(basePrice - promoDiscountAmount(promo, basePrice), 0);
 }
 

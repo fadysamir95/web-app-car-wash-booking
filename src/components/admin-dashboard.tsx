@@ -2,16 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, BarChart3, Bell, Check, Download, ExternalLink, LogOut, Pencil, Save, Search, Send, Smartphone, Trash2, Users, X } from "lucide-react";
-import { BOOKING_STATUSES, DEFAULT_SERVICE, PROMO_CODES, SERVICE_AREAS, SERVICE_CONFIG } from "@/lib/constants";
+import { AlertTriangle, BadgePercent, Ban, Bell, CalendarDays, CheckCircle2, ClipboardList, Download, Droplets, Eye, EyeOff, ExternalLink, Hourglass, LogOut, Map as MapIcon, Megaphone, MessageSquareWarning, Pencil, Save, Search, Send, ShieldCheck, SlidersHorizontal, Smartphone, Trash2, UserCog, Users, WalletCards, X } from "lucide-react";
+import { BOOKING_STATUSES, DEFAULT_SERVICE, PROMO_CODES, SERVICE_AREAS } from "@/lib/constants";
 import { formatDisplayDate } from "@/lib/date";
 import { bookingFinalPrice as calculateBookingFinalPrice, promoDisplayValue } from "@/lib/pricing";
-import type { Booking, CustomerSummary, PromoCode } from "@/lib/types";
+import type { Booking, CustomerSummary, PromoCode, PublicWorker, ServiceSettings } from "@/lib/types";
 import type { TranslationKey } from "@/lib/i18n";
 import { useLanguage } from "./language-provider";
 import { LanguageSwitcher } from "./language-switcher";
 
-type Tab = "customers" | "allBookings" | "pendingBookings" | "confirmedBookings" | "cancelledBookings" | "completedWashes" | "promoCodes" | "revenue";
+type Tab = "todayOps" | "customers" | "allBookings" | "pendingBookings" | "confirmedBookings" | "cancelledBookings" | "completedWashes" | "promoCodes" | "revenue" | "settings" | "campaigns" | "complaints" | "workers";
 type NotificationItem = {
   id: string;
   text: string;
@@ -21,10 +21,18 @@ type PendingDelete =
   | { type: "booking"; id: string; label: string }
   | { type: "customer"; phoneNumber: string; label: string };
 
-export function AdminDashboard({ initialBookings }: { initialBookings: Booking[] }) {
+export function AdminDashboard({
+  initialBookings,
+  initialSettings,
+  initialWorkers
+}: {
+  initialBookings: Booking[];
+  initialSettings: ServiceSettings;
+  initialWorkers: PublicWorker[];
+}) {
   const { language, dir, t } = useLanguage();
   const [bookings, setBookings] = useState(initialBookings);
-  const [tab, setTab] = useState<Tab>("confirmedBookings");
+  const [tab, setTab] = useState<Tab>("todayOps");
   const [dateFilter, setDateFilter] = useState("");
   const [areaFilter, setAreaFilter] = useState("");
   const [query, setQuery] = useState("");
@@ -39,6 +47,10 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
   const [analyticsNow, setAnalyticsNow] = useState("");
   const [promos, setPromos] = useState<PromoCode[]>(PROMO_CODES.map((promo) => ({ ...promo, discountType: "amount", active: true })));
   const [promoForm, setPromoForm] = useState({ code: "", label: "", discountType: "amount", discountValue: "25", expiresAt: "" });
+  const [settings, setSettings] = useState<ServiceSettings>(initialSettings);
+  const [workers, setWorkers] = useState<PublicWorker[]>(initialWorkers);
+  const [workerForm, setWorkerForm] = useState({ name: "", password: "", areas: initialSettings.areas.filter((area) => area.active).map((area) => area.id) });
+  const [adminPasswordForm, setAdminPasswordForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">("unsupported");
   const knownBookingIds = useRef(new Set(initialBookings.map((booking) => booking.id)));
 
@@ -132,13 +144,22 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
   const confirmedBookings = bookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Confirmed").length;
   const cancelledBookings = bookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Cancelled").length;
   const completedWashes = bookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Completed").length;
+  const complaints = bookings.filter((booking) => booking.complaint);
+  const todayBookings = todayValue ? bookings.filter((booking) => booking.bookingDate === todayValue) : [];
+  const todayPending = todayBookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Pending").length;
+  const todayConfirmed = todayBookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Confirmed").length;
+  const todayCompleted = todayBookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Completed").length;
+  const todayRemaining = todayBookings.filter((booking) => {
+    const status = normalizedBookingStatus(booking.bookingStatus);
+    return status !== "Cancelled" && status !== "Completed";
+  }).length;
   const selectedBooking = bookings.find((booking) => booking.id === selectedBookingId) || null;
   const capacityWarnings = useMemo(() => {
-    const warningAt = SERVICE_CONFIG.maxBookingsPerDay - 2;
+    const warningAt = settings.maxBookingsPerDay - 2;
     return Object.entries(dailyCounts)
       .filter(([, count]) => count >= warningAt)
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  }, [dailyCounts]);
+  }, [dailyCounts, settings.maxBookingsPerDay]);
 
   async function updateBooking(id: string, updates: Partial<Pick<Booking, "bookingStatus">>) {
     const oldBooking = bookings.find((booking) => booking.id === id);
@@ -281,6 +302,78 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
     if (!response.ok) return;
     const payload = (await response.json()) as { promos: PromoCode[] };
     setPromos(payload.promos);
+  }
+
+  async function saveSettings() {
+    const response = await fetch("/api/admin/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(settings)
+    });
+    if (!response.ok) return;
+    const payload = (await response.json()) as { settings: ServiceSettings };
+    setSettings(payload.settings);
+    notify(language === "ar" ? "تم حفظ الإعدادات العامة." : "General settings saved.");
+  }
+
+  async function changePassword() {
+    if (adminPasswordForm.newPassword !== adminPasswordForm.confirmPassword || adminPasswordForm.newPassword.length < 8) {
+      notify(language === "ar" ? "كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل ومتطابقة." : "New password must be at least 8 characters and match confirmation.");
+      return;
+    }
+    const response = await fetch("/api/admin/password", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(adminPasswordForm)
+    });
+    if (!response.ok) {
+      notify(language === "ar" ? "لم يتم تغيير كلمة المرور. تأكد من كلمة المرور الحالية." : "Password was not changed. Check the current password.");
+      return;
+    }
+    setAdminPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+    notify(language === "ar" ? "تم تغيير كلمة مرور الأدمن." : "Admin password changed.");
+  }
+
+  async function addWorker() {
+    const response = await fetch("/api/admin/workers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(workerForm)
+    });
+    if (!response.ok) return;
+    const payload = (await response.json()) as { worker: PublicWorker };
+    setWorkers((current) => [payload.worker, ...current]);
+    setWorkerForm({ name: "", password: "", areas: settings.areas.filter((area) => area.active).map((area) => area.id) });
+    notify(language === "ar" ? "تم إضافة العامل." : "Worker added.");
+  }
+
+  async function deleteWorker(id: string) {
+    const response = await fetch(`/api/admin/workers/${id}`, { method: "DELETE" });
+    if (!response.ok) return;
+    const payload = (await response.json()) as { workers: PublicWorker[] };
+    setWorkers(payload.workers);
+    notify(language === "ar" ? "تم حذف العامل." : "Worker deleted.");
+  }
+
+  async function updateWorker(id: string, updates: { name?: string; password?: string; areas?: string[] }) {
+    const response = await fetch(`/api/admin/workers/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates)
+    });
+    if (!response.ok) return;
+    const payload = (await response.json()) as { worker: PublicWorker };
+    setWorkers((current) => current.map((worker) => (worker.id === id ? payload.worker : worker)));
+    notify(language === "ar" ? "تم تعديل بيانات العامل." : "Worker updated.");
+  }
+
+  function sendSegmentCampaign(segment: CustomerSummary[], label: string) {
+    const message = language === "ar"
+      ? `عرض خاص من Car Wash Booking لعملاء ${label}. احجز غسلتك القادمة الآن.`
+      : `Special offer from Car Wash Booking for ${label}. Book your next wash now.`;
+    const phoneList = segment.map((customer) => `${customer.phoneNumber} - ${customer.customerName}`).join("\n");
+    void navigator.clipboard.writeText(`${message}\n\n${phoneList}`);
+    notify(language === "ar" ? "تم نسخ رسالة العرض وقائمة العملاء." : "Campaign message and customer list copied.");
   }
 
   function showToast(message: string) {
@@ -442,23 +535,47 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
                     <AlertTriangle className="h-5 w-5" />
                     {t("capacityWarning").replace("{date}", formatDisplayDate(date, language))}
                   </span>
-                  <span>{count}/{SERVICE_CONFIG.maxBookingsPerDay}</span>
+                  <span>{count}/{settings.maxBookingsPerDay}</span>
                 </div>
               ))}
             </div>
           ) : null}
         </div>
 
-        <nav className="mt-5 grid gap-2 rounded-[8px] bg-white p-2 shadow-sm dark:bg-slate-900 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8">
+        <nav className="mt-5 grid gap-2 rounded-[8px] bg-white p-2 shadow-sm dark:bg-slate-900 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-6">
+          <TabButton active={tab === "todayOps"} onClick={() => setTab("todayOps")} icon={<CalendarDays className="h-4 w-4" />} label={language === "ar" ? "متابعة اليوم" : "Today"} value={todayBookings.length} />
           <TabButton active={tab === "customers"} onClick={() => setTab("customers")} icon={<Users className="h-4 w-4" />} label={t("customers")} value={customers.length} />
-          <TabButton active={tab === "allBookings"} onClick={() => setTab("allBookings")} icon={<Check className="h-4 w-4" />} label={t("allBookings")} value={bookings.length} />
-          <TabButton active={tab === "pendingBookings"} onClick={() => setTab("pendingBookings")} icon={<Bell className="h-4 w-4" />} label={t("pendingBookings")} value={pendingBookings} />
-          <TabButton active={tab === "confirmedBookings"} onClick={() => setTab("confirmedBookings")} icon={<Check className="h-4 w-4" />} label={t("confirmedBookings")} value={confirmedBookings} />
-          <TabButton active={tab === "cancelledBookings"} onClick={() => setTab("cancelledBookings")} icon={<X className="h-4 w-4" />} label={t("cancelledBookings")} value={cancelledBookings} />
-          <TabButton active={tab === "completedWashes"} onClick={() => setTab("completedWashes")} icon={<Check className="h-4 w-4" />} label={t("completedWashes")} value={completedWashes} />
-          <TabButton active={tab === "promoCodes"} onClick={() => setTab("promoCodes")} icon={<Pencil className="h-4 w-4" />} label={t("promoCodes")} value={promos.length} />
-          <TabButton active={tab === "revenue"} onClick={() => setTab("revenue")} icon={<BarChart3 className="h-4 w-4" />} label={t("revenue")} value={`${confirmedRevenue} EGP`} />
+          <TabButton active={tab === "allBookings"} onClick={() => setTab("allBookings")} icon={<ClipboardList className="h-4 w-4" />} label={t("allBookings")} value={bookings.length} />
+          <TabButton active={tab === "pendingBookings"} onClick={() => setTab("pendingBookings")} icon={<Hourglass className="h-4 w-4" />} label={t("pendingBookings")} value={pendingBookings} />
+          <TabButton active={tab === "confirmedBookings"} onClick={() => setTab("confirmedBookings")} icon={<ShieldCheck className="h-4 w-4" />} label={t("confirmedBookings")} value={confirmedBookings} />
+          <TabButton active={tab === "cancelledBookings"} onClick={() => setTab("cancelledBookings")} icon={<Ban className="h-4 w-4" />} label={t("cancelledBookings")} value={cancelledBookings} />
+          <TabButton active={tab === "completedWashes"} onClick={() => setTab("completedWashes")} icon={<Droplets className="h-4 w-4" />} label={t("completedWashes")} value={completedWashes} />
+          <TabButton active={tab === "promoCodes"} onClick={() => setTab("promoCodes")} icon={<BadgePercent className="h-4 w-4" />} label={t("promoCodes")} value={promos.length} />
+          <TabButton active={tab === "revenue"} onClick={() => setTab("revenue")} icon={<WalletCards className="h-4 w-4" />} label={t("revenue")} value={`${confirmedRevenue} EGP`} />
+          <TabButton active={tab === "settings"} onClick={() => setTab("settings")} icon={<SlidersHorizontal className="h-4 w-4" />} label={language === "ar" ? "الإعدادات" : "Settings"} value={settings.servicePriceEgp} />
+          <TabButton active={tab === "campaigns"} onClick={() => setTab("campaigns")} icon={<Megaphone className="h-4 w-4" />} label={language === "ar" ? "العروض الذكية" : "Smart Offers"} value={customers.length} />
+          <TabButton active={tab === "complaints"} onClick={() => setTab("complaints")} icon={<MessageSquareWarning className="h-4 w-4" />} label={language === "ar" ? "الشكاوى" : "Complaints"} value={complaints.length} />
+          <TabButton active={tab === "workers"} onClick={() => setTab("workers")} icon={<UserCog className="h-4 w-4" />} label={language === "ar" ? "العمال" : "Workers"} value={workers.length} />
         </nav>
+
+        {tab === "todayOps" ? (
+          <TodayOperationsPanel
+            bookings={todayBookings}
+            workers={workers}
+            settings={settings}
+            language={language}
+            todayValue={todayValue}
+            analyticsTime={analyticsTime}
+            stats={{
+              total: todayBookings.length,
+              pending: todayPending,
+              confirmed: todayConfirmed,
+              completed: todayCompleted,
+              remaining: todayRemaining
+            }}
+            onOpenBooking={setSelectedBookingId}
+          />
+        ) : null}
 
         {tab === "allBookings" || tab === "pendingBookings" || tab === "confirmedBookings" || tab === "cancelledBookings" || tab === "completedWashes" ? (
           <>
@@ -469,6 +586,7 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
               setDateFilter={setDateFilter}
               setAreaFilter={setAreaFilter}
               setQuery={setQuery}
+              settings={settings}
             />
             <section className="mt-4 grid gap-3">
               {displayedBookings.map((booking) => (
@@ -511,7 +629,7 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
                     </div>
                     {primaryBookingAction(booking) ? (
                       <button type="button" onClick={(event) => { event.stopPropagation(); runPrimaryBookingAction(booking); }} className="inline-flex h-12 items-center justify-center gap-2 self-end rounded-[8px] bg-emerald-500 px-4 text-sm font-black text-white">
-                        <Check className="h-4 w-4" />
+                        <CheckCircle2 className="h-4 w-4" />
                         {t(primaryBookingAction(booking)!.label)}
                       </button>
                     ) : null}
@@ -632,6 +750,9 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
                     <div>
                       <p className="font-black text-slate-950 dark:text-white">{promo.code}</p>
                       <p className="mt-1 font-bold text-slate-500">{promo.label} - {promoDisplayValue(promo)}</p>
+                      <p className="mt-1 text-xs font-black text-slate-400">
+                        {language === "ar" ? "ينتهي في" : "Expires"}: {promo.expiresAt ? formatDisplayDate(promo.expiresAt.slice(0, 10), language) : language === "ar" ? "بدون تاريخ انتهاء" : "No expiry date"}
+                      </p>
                     </div>
                     <button type="button" onClick={() => deletePromo(promo.code)} className="inline-flex h-9 items-center gap-1 rounded-[8px] bg-rose-600 px-3 text-xs font-black text-white">
                       <Trash2 className="h-3.5 w-3.5" />
@@ -644,9 +765,64 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
           </section>
         ) : null}
 
+        {tab === "settings" ? (
+          <SettingsPanel
+            settings={settings}
+            setSettings={setSettings}
+            onSave={saveSettings}
+            adminPasswordForm={adminPasswordForm}
+            setAdminPasswordForm={setAdminPasswordForm}
+            onChangePassword={changePassword}
+            language={language}
+          />
+        ) : null}
+
+        {tab === "campaigns" ? (
+          <CampaignsPanel
+            customers={customers}
+            bookings={bookings}
+            language={language}
+            now={analyticsTime}
+            onSend={sendSegmentCampaign}
+          />
+        ) : null}
+
+        {tab === "complaints" ? (
+          <section className="mt-4 grid gap-3">
+            {complaints.map((booking) => (
+              <article key={booking.id} className="rounded-[8px] bg-white p-4 shadow-sm dark:bg-slate-900">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black uppercase text-rose-700">{booking.id}</p>
+                    <h2 className="mt-1 text-lg font-black text-slate-950 dark:text-white">{booking.customerName}</h2>
+                    <p className="mt-1 text-sm font-bold text-slate-500">{booking.carBrand} {booking.carModel} - {booking.areaName || booking.area}</p>
+                  </div>
+                  <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-black text-rose-800 dark:bg-rose-950 dark:text-rose-100">{booking.rating}/5</span>
+                </div>
+                <p className="mt-3 rounded-[8px] bg-slate-50 p-3 text-sm font-bold leading-6 text-slate-700 dark:bg-slate-800 dark:text-slate-200">{booking.complaint?.text}</p>
+                <p className="mt-2 text-xs font-bold text-slate-400">{booking.complaint?.createdAt ? new Intl.DateTimeFormat(language === "ar" ? "ar-EG" : "en-EG", { dateStyle: "medium", timeStyle: "short" }).format(new Date(booking.complaint.createdAt)) : ""}</p>
+              </article>
+            ))}
+            {complaints.length === 0 ? <Empty text={language === "ar" ? "لا توجد شكاوى حتى الآن." : "No complaints yet."} /> : null}
+          </section>
+        ) : null}
+
+        {tab === "workers" ? (
+          <WorkersPanel
+            workers={workers}
+            workerForm={workerForm}
+            setWorkerForm={setWorkerForm}
+            settings={settings}
+            language={language}
+            onAdd={addWorker}
+            onUpdate={updateWorker}
+            onDelete={deleteWorker}
+          />
+        ) : null}
+
         {tab === "revenue" ? (
           <section className="mt-4 grid gap-4 lg:grid-cols-3">
-            <AnalyticsCard title={t("bookingsPerDay")} items={Object.entries(dailyCounts).map(([date, count]) => [formatDisplayDate(date, language), `${count}/${SERVICE_CONFIG.maxBookingsPerDay}`])} />
+            <AnalyticsCard title={t("bookingsPerDay")} items={Object.entries(dailyCounts).map(([date, count]) => [formatDisplayDate(date, language), `${count}/${settings.maxBookingsPerDay}`])} />
             <AnalyticsCard title={t("topAreas")} items={topAreas.map(([area, count]) => [area, String(count)])} />
             <div className="rounded-[8px] bg-white p-4 shadow-sm dark:bg-slate-900">
               <p className="text-sm font-bold text-slate-500">{t("repeatCustomers")}</p>
@@ -705,6 +881,7 @@ function Filters(props: {
   dateFilter: string;
   areaFilter: string;
   query: string;
+  settings: ServiceSettings;
   setDateFilter: (value: string) => void;
   setAreaFilter: (value: string) => void;
   setQuery: (value: string) => void;
@@ -720,9 +897,9 @@ function Filters(props: {
         <span className="label">{t("area")}</span>
         <select className="field" value={props.areaFilter} onChange={(event) => props.setAreaFilter(event.target.value)}>
           <option value="">{t("allAreas")}</option>
-          {SERVICE_AREAS.map((area) => (
+          {props.settings.areas.filter((area) => area.active).map((area) => (
             <option key={area.id} value={area.id}>
-              {area.name[language]}
+              {language === "ar" ? area.nameAr : area.nameEn}
             </option>
           ))}
         </select>
@@ -735,6 +912,440 @@ function Filters(props: {
         </span>
       </label>
     </section>
+  );
+}
+
+function TodayOperationsPanel({
+  bookings,
+  workers,
+  settings,
+  language,
+  todayValue,
+  analyticsTime,
+  stats,
+  onOpenBooking
+}: {
+  bookings: Booking[];
+  workers: PublicWorker[];
+  settings: ServiceSettings;
+  language: "en" | "ar";
+  todayValue: string;
+  analyticsTime: number;
+  stats: { total: number; pending: number; confirmed: number; completed: number; remaining: number };
+  onOpenBooking: (id: string) => void;
+}) {
+  const routeUrl = buildRouteUrl(bookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) !== "Cancelled"));
+  const afterWashWindow = analyticsTime ? new Date(analyticsTime).getHours() >= 5 : false;
+  const overdue = bookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Confirmed");
+  const sortedBookings = [...bookings].sort((a, b) => a.area.localeCompare(b.area) || a.createdAt.localeCompare(b.createdAt));
+  const label = {
+    title: language === "ar" ? "متابعة اليوم" : "Today Operations",
+    date: language === "ar" ? "تاريخ اليوم" : "Today",
+    total: language === "ar" ? "حجوزات اليوم" : "Today bookings",
+    pending: language === "ar" ? "معلقة" : "Pending",
+    confirmed: language === "ar" ? "مؤكدة" : "Confirmed",
+    completed: language === "ar" ? "تم الغسيل" : "Washed",
+    remaining: language === "ar" ? "متبقي" : "Remaining",
+    route: language === "ar" ? "فتح خريطة اليوم" : "Open today route",
+    worker: language === "ar" ? "العامل المسؤول" : "Assigned worker",
+    proof: language === "ar" ? "إثبات الصورة" : "Photo proof",
+    hasProof: language === "ar" ? "مرفوعة" : "Uploaded",
+    noProof: language === "ar" ? "غير مرفوعة" : "Missing",
+    noBookings: language === "ar" ? "لا توجد حجوزات اليوم." : "No bookings today.",
+    overdue: language === "ar" ? "يوجد حجز مؤكد لم يتم تسجيل غسيله بعد الساعة 5 صباحًا." : "A confirmed booking has not been marked washed after 5 AM.",
+    status: language === "ar" ? "الحالة" : "Status"
+  };
+
+  return (
+    <section className="mt-4 grid gap-4">
+      <div className="rounded-[8px] bg-white p-4 shadow-sm dark:bg-slate-900">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-black uppercase text-sky-700">{label.title}</p>
+            <h2 className="mt-1 text-2xl font-black text-slate-950 dark:text-white">
+              {label.date}: {todayValue ? formatDisplayDate(todayValue, language) : "-"}
+            </h2>
+            <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-300">
+              {stats.total}/{settings.maxBookingsPerDay} {language === "ar" ? "من الحد اليومي" : "daily capacity"}
+            </p>
+          </div>
+          {routeUrl ? (
+            <a href={routeUrl} target="_blank" rel="noreferrer" className="inline-flex h-11 items-center justify-center gap-2 rounded-[8px] bg-sky-600 px-4 text-sm font-black text-white">
+              <MapIcon className="h-4 w-4" />
+              {label.route}
+            </a>
+          ) : null}
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <TodayStat title={label.total} value={stats.total} />
+          <TodayStat title={label.pending} value={stats.pending} tone="amber" />
+          <TodayStat title={label.confirmed} value={stats.confirmed} tone="emerald" />
+          <TodayStat title={label.completed} value={stats.completed} tone="sky" />
+          <TodayStat title={label.remaining} value={stats.remaining} tone="rose" />
+        </div>
+
+        {afterWashWindow && overdue.length > 0 ? (
+          <div className="mt-4 rounded-[8px] border border-amber-300 bg-amber-50 p-3 text-sm font-black text-amber-950 dark:border-amber-900 dark:bg-amber-950/35 dark:text-amber-100">
+            <AlertTriangle className="me-2 inline h-4 w-4" />
+            {label.overdue}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="grid gap-3">
+        {sortedBookings.map((booking) => {
+          const worker = workers.find((item) => item.areas.includes(booking.area));
+          const status = normalizedBookingStatus(booking.bookingStatus);
+          return (
+            <button
+              key={booking.id}
+              type="button"
+              onClick={() => onOpenBooking(booking.id)}
+              className="rounded-[8px] bg-white p-4 text-start shadow-sm transition hover:shadow-md dark:bg-slate-900"
+            >
+              <div className="grid gap-3 lg:grid-cols-[1.1fr_1fr_1fr_1fr] lg:items-center">
+                <div>
+                  <p className="text-xs font-black uppercase text-sky-700">{booking.id}</p>
+                  <h3 className="mt-1 text-lg font-black text-slate-950 dark:text-white">{booking.customerName}</h3>
+                  <p className="mt-1 text-sm font-bold text-slate-500">{booking.carBrand} {booking.carModel} - {booking.carColor}</p>
+                </div>
+                <div className="text-sm font-bold text-slate-600 dark:text-slate-300">
+                  <p>{areaLabel(booking.area, language)}</p>
+                  <p className="mt-1">{booking.address || "-"}</p>
+                </div>
+                <div className="text-sm font-bold text-slate-600 dark:text-slate-300">
+                  <p><span className="text-slate-400">{label.worker}: </span>{worker?.name || "-"}</p>
+                  <p className="mt-1"><span className="text-slate-400">{label.proof}: </span>{booking.washProofImageDataUrl ? label.hasProof : label.noProof}</p>
+                </div>
+                <div className="flex flex-wrap gap-2 lg:justify-end">
+                  <span className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-black ${statusBadgeClass(status)}`}>
+                    {label.status}: {bookingStatusLabel(status, language)}
+                  </span>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+        {sortedBookings.length === 0 ? <Empty text={label.noBookings} /> : null}
+      </div>
+    </section>
+  );
+}
+
+function TodayStat({ title, value, tone = "slate" }: { title: string; value: number; tone?: "slate" | "amber" | "emerald" | "sky" | "rose" }) {
+  const tones = {
+    slate: "bg-slate-50 text-slate-950 dark:bg-slate-800 dark:text-white",
+    amber: "bg-amber-50 text-amber-950 dark:bg-amber-950/35 dark:text-amber-100",
+    emerald: "bg-emerald-50 text-emerald-950 dark:bg-emerald-950/35 dark:text-emerald-100",
+    sky: "bg-sky-50 text-sky-950 dark:bg-sky-950/35 dark:text-sky-100",
+    rose: "bg-rose-50 text-rose-950 dark:bg-rose-950/35 dark:text-rose-100"
+  } as const;
+  return (
+    <div className={`rounded-[8px] p-4 ${tones[tone]}`}>
+      <p className="text-sm font-black opacity-70">{title}</p>
+      <p className="mt-2 text-3xl font-black">{value}</p>
+    </div>
+  );
+}
+
+function SettingsPanel({
+  settings,
+  setSettings,
+  onSave,
+  adminPasswordForm,
+  setAdminPasswordForm,
+  onChangePassword,
+  language
+}: {
+  settings: ServiceSettings;
+  setSettings: (settings: ServiceSettings) => void;
+  onSave: () => void;
+  adminPasswordForm: { currentPassword: string; newPassword: string; confirmPassword: string };
+  setAdminPasswordForm: (form: { currentPassword: string; newPassword: string; confirmPassword: string }) => void;
+  onChangePassword: () => void;
+  language: "en" | "ar";
+}) {
+  function updateArea(index: number, updates: Partial<ServiceSettings["areas"][number]>) {
+    setSettings({
+      ...settings,
+      areas: settings.areas.map((area, areaIndex) => (areaIndex === index ? { ...area, ...updates } : area))
+    });
+  }
+
+  function addArea() {
+    setSettings({
+      ...settings,
+      areas: [
+        ...settings.areas,
+        { id: `area-${settings.areas.length + 1}`, nameEn: "New Area", nameAr: "New Area", priceEgp: settings.servicePriceEgp, active: true }
+      ]
+    });
+  }
+
+  function updateAreaEnglishName(index: number, value: string) {
+    updateArea(index, { id: slugifyAreaName(value), nameEn: value });
+  }
+
+  return (
+    <section className="mt-4 grid gap-4 lg:grid-cols-[360px_1fr]">
+      <div className="rounded-[8px] bg-white p-4 shadow-sm dark:bg-slate-900">
+        <h2 className="text-lg font-black text-slate-950 dark:text-white">{language === "ar" ? "الإعدادات العامة" : "General Settings"}</h2>
+        <div className="mt-4 grid gap-3">
+          <label><span className="label">{language === "ar" ? "السعر" : "Price"}</span><input className="field" inputMode="numeric" value={settings.servicePriceEgp} onChange={(event) => setSettings({ ...settings, servicePriceEgp: Number(event.target.value || 0) })} /></label>
+          <label><span className="label">{language === "ar" ? "رقم الدفع" : "Payment number"}</span><input className="field" value={settings.paymentPhone} onChange={(event) => setSettings({ ...settings, paymentPhone: event.target.value.replace(/\D/g, "") })} /></label>
+          <label><span className="label">{language === "ar" ? "الحد الأقصى اليومي" : "Daily capacity"}</span><input className="field" inputMode="numeric" value={settings.maxBookingsPerDay} onChange={(event) => setSettings({ ...settings, maxBookingsPerDay: Number(event.target.value || 1) })} /></label>
+          <label><span className="label">{language === "ar" ? "وقت الغسيل بالإنجليزية" : "Wash window EN"}</span><input className="field" value={settings.washWindow} onChange={(event) => setSettings({ ...settings, washWindow: event.target.value })} /></label>
+          <label><span className="label">{language === "ar" ? "وقت الغسيل بالعربية" : "Wash window AR"}</span><input className="field" value={settings.washWindowAr} onChange={(event) => setSettings({ ...settings, washWindowAr: event.target.value })} /></label>
+          <button type="button" onClick={onSave} className="inline-flex h-12 items-center justify-center rounded-[8px] bg-sky-600 px-4 text-sm font-black text-white shadow-sm transition hover:bg-sky-500">
+            {language === "ar" ? "حفظ الإعدادات" : "Save settings"}
+          </button>
+        </div>
+        <div className="mt-5 rounded-[8px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800">
+          <h3 className="text-base font-black text-slate-950 dark:text-white">{language === "ar" ? "تغيير كلمة مرور الأدمن" : "Change admin password"}</h3>
+          <div className="mt-3 grid gap-3">
+            <label><span className="label">{language === "ar" ? "كلمة المرور الحالية" : "Current password"}</span><input className="field" type="password" value={adminPasswordForm.currentPassword} onChange={(event) => setAdminPasswordForm({ ...adminPasswordForm, currentPassword: event.target.value })} /></label>
+            <label><span className="label">{language === "ar" ? "كلمة المرور الجديدة" : "New password"}</span><input className="field" type="password" value={adminPasswordForm.newPassword} onChange={(event) => setAdminPasswordForm({ ...adminPasswordForm, newPassword: event.target.value })} /></label>
+            <label><span className="label">{language === "ar" ? "تأكيد كلمة المرور" : "Confirm password"}</span><input className="field" type="password" value={adminPasswordForm.confirmPassword} onChange={(event) => setAdminPasswordForm({ ...adminPasswordForm, confirmPassword: event.target.value })} /></label>
+            <button type="button" onClick={onChangePassword} className="inline-flex h-12 items-center justify-center rounded-[8px] bg-slate-950 px-4 text-sm font-black text-white shadow-sm transition hover:bg-slate-800 dark:bg-white dark:text-slate-950">
+              {language === "ar" ? "تغيير كلمة المرور" : "Change password"}
+            </button>
+          </div>
+        </div>
+      </div>
+      <div className="rounded-[8px] bg-white p-4 shadow-sm dark:bg-slate-900">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-black text-slate-950 dark:text-white">{language === "ar" ? "المناطق المتاحة" : "Available areas"}</h2>
+          <button type="button" onClick={addArea} className="rounded-[8px] bg-sky-600 px-3 py-2 text-xs font-black text-white">{language === "ar" ? "إضافة منطقة" : "Add area"}</button>
+        </div>
+        <div className="mt-4 grid gap-3">
+          {settings.areas.map((area, index) => (
+            <div key={`${area.id}-${index}`} className="grid gap-2 rounded-[8px] bg-slate-50 p-3 dark:bg-slate-800 sm:grid-cols-[1fr_1fr_120px_110px]">
+              <input className="field" value={area.nameEn} onChange={(event) => updateAreaEnglishName(index, event.target.value)} placeholder="Degla Palms" />
+              <input className="field" value={area.nameAr} onChange={(event) => updateArea(index, { nameAr: event.target.value })} placeholder="دجلة بالمز" dir="auto" />
+              <input className="field" inputMode="numeric" value={area.priceEgp} onChange={(event) => updateArea(index, { priceEgp: Number(event.target.value || 0) })} />
+              <label className="flex items-center gap-2 text-sm font-black text-slate-700 dark:text-slate-200">
+                <input type="checkbox" checked={area.active} onChange={(event) => updateArea(index, { active: event.target.checked })} />
+                {language === "ar" ? "متاحة" : "Active"}
+              </label>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CampaignsPanel({
+  customers,
+  bookings,
+  language,
+  now,
+  onSend
+}: {
+  customers: CustomerSummary[];
+  bookings: Booking[];
+  language: "en" | "ar";
+  now: number;
+  onSend: (segment: CustomerSummary[], label: string) => void;
+}) {
+  const byPhone = new Map(bookings.map((booking) => [booking.phoneNumber, booking]));
+  const inactive30 = customers.filter((customer) => now - new Date(customer.lastBookingDate).getTime() > 30 * 24 * 60 * 60 * 1000);
+  const repeat = customers.filter((customer) => customer.totalBookings > 1);
+  const usedPromo = customers.filter((customer) => bookings.some((booking) => booking.phoneNumber === customer.phoneNumber && booking.promoCode));
+  const areas = [...new Set(customers.map((customer) => customer.area))];
+  const segments = [
+    { label: language === "ar" ? "لم يحجز منذ 30 يوم" : "Inactive 30 days", customers: inactive30 },
+    { label: language === "ar" ? "حجز أكثر من مرة" : "Repeat customers", customers: repeat },
+    { label: language === "ar" ? "استخدم بروموكود" : "Used promo code", customers: usedPromo }
+  ];
+
+  return (
+    <section className="mt-4 grid gap-3 lg:grid-cols-2">
+      {segments.map((segment) => (
+        <CampaignCard key={segment.label} label={segment.label} count={segment.customers.length} onSend={() => onSend(segment.customers, segment.label)} language={language} />
+      ))}
+      {areas.map((area) => {
+        const segment = customers.filter((customer) => customer.area === area && byPhone.has(customer.phoneNumber));
+        return <CampaignCard key={area} label={`${language === "ar" ? "منطقة" : "Area"}: ${area}`} count={segment.length} onSend={() => onSend(segment, area)} language={language} />;
+      })}
+    </section>
+  );
+}
+
+function CampaignCard({ label, count, onSend, language }: { label: string; count: number; onSend: () => void; language: "en" | "ar" }) {
+  return (
+    <div className="rounded-[8px] bg-white p-4 shadow-sm dark:bg-slate-900">
+      <p className="text-sm font-black text-sky-700">{label}</p>
+      <p className="mt-2 text-3xl font-black text-slate-950 dark:text-white">{count}</p>
+      <button type="button" disabled={count === 0} onClick={onSend} className="mt-4 inline-flex h-11 items-center justify-center rounded-[8px] bg-emerald-500 px-4 text-sm font-black text-white disabled:bg-slate-400">
+        {language === "ar" ? "تجهيز رسالة العرض" : "Prepare campaign"}
+      </button>
+    </div>
+  );
+}
+
+function WorkersPanel({
+  workers,
+  workerForm,
+  setWorkerForm,
+  settings,
+  language,
+  onAdd,
+  onUpdate,
+  onDelete
+}: {
+  workers: PublicWorker[];
+  workerForm: { name: string; password: string; areas: string[] };
+  setWorkerForm: (form: { name: string; password: string; areas: string[] }) => void;
+  settings: ServiceSettings;
+  language: "en" | "ar";
+  onAdd: () => void;
+  onUpdate: (id: string, updates: { name?: string; password?: string; areas?: string[] }) => void;
+  onDelete: (id: string) => void;
+}) {
+  function toggleArea(areaId: string) {
+    const hasArea = workerForm.areas.includes(areaId);
+    setWorkerForm({ ...workerForm, areas: hasArea ? workerForm.areas.filter((item) => item !== areaId) : [...workerForm.areas, areaId] });
+  }
+
+  return (
+    <section className="mt-4 grid gap-4 lg:grid-cols-[360px_1fr]">
+      <div className="rounded-[8px] bg-white p-4 shadow-sm dark:bg-slate-900">
+        <h2 className="text-lg font-black text-slate-950 dark:text-white">{language === "ar" ? "إضافة عامل" : "Add worker"}</h2>
+        <div className="mt-4 grid gap-3">
+          <label><span className="label">{language === "ar" ? "اسم العامل" : "Worker name"}</span><input className="field" value={workerForm.name} onChange={(event) => setWorkerForm({ ...workerForm, name: event.target.value })} /></label>
+          <label><span className="label">{language === "ar" ? "كلمة المرور" : "Password"}</span><input className="field" value={workerForm.password} onChange={(event) => setWorkerForm({ ...workerForm, password: event.target.value })} /></label>
+          <div>
+            <span className="label">{language === "ar" ? "المناطق المسؤول عنها" : "Assigned areas"}</span>
+            <div className="mt-2 grid gap-2">
+              {settings.areas.filter((area) => area.active).map((area) => (
+                <label key={area.id} className="flex items-center gap-2 rounded-[8px] bg-slate-50 p-2 text-sm font-bold dark:bg-slate-800">
+                  <input type="checkbox" checked={workerForm.areas.includes(area.id)} onChange={() => toggleArea(area.id)} />
+                  {language === "ar" ? area.nameAr : area.nameEn}
+                </label>
+              ))}
+            </div>
+          </div>
+          <button type="button" onClick={onAdd} className="inline-flex h-12 items-center justify-center rounded-[8px] bg-sky-600 px-4 text-sm font-black text-white shadow-sm transition hover:bg-sky-500">
+            {language === "ar" ? "إضافة العامل" : "Add worker"}
+          </button>
+        </div>
+      </div>
+      <div className="grid gap-3">
+        {workers.map((worker) => (
+          <WorkerCard
+            key={worker.id}
+            worker={worker}
+            settings={settings}
+            language={language}
+            onUpdate={onUpdate}
+            onDelete={onDelete}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function WorkerCard({
+  worker,
+  settings,
+  language,
+  onUpdate,
+  onDelete
+}: {
+  worker: PublicWorker;
+  settings: ServiceSettings;
+  language: "en" | "ar";
+  onUpdate: (id: string, updates: { name?: string; password?: string; areas?: string[] }) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [draft, setDraft] = useState({
+    name: worker.name,
+    password: worker.passwordPreview || "",
+    areas: worker.areas
+  });
+
+  function toggleArea(areaId: string) {
+    const hasArea = draft.areas.includes(areaId);
+    setDraft({ ...draft, areas: hasArea ? draft.areas.filter((item) => item !== areaId) : [...draft.areas, areaId] });
+  }
+
+  function saveWorker() {
+    onUpdate(worker.id, {
+      name: draft.name,
+      password: draft.password && draft.password !== worker.passwordPreview ? draft.password : undefined,
+      areas: draft.areas
+    });
+    setEditing(false);
+  }
+
+  return (
+    <article className="rounded-[8px] bg-white p-4 shadow-sm dark:bg-slate-900">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          {editing ? (
+            <input className="field max-w-sm" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+          ) : (
+            <h2 className="text-lg font-black text-slate-950 dark:text-white">{worker.name}</h2>
+          )}
+          <p className="mt-1 text-sm font-bold text-slate-500">{worker.areas.join(", ") || "-"}</p>
+        </div>
+        <div className="flex gap-2">
+          {editing ? (
+            <button type="button" onClick={saveWorker} className="inline-flex h-9 items-center gap-1 rounded-[8px] bg-emerald-500 px-3 text-xs font-black text-white">
+              <Save className="h-3.5 w-3.5" />
+              {language === "ar" ? "حفظ" : "Save"}
+            </button>
+          ) : (
+            <button type="button" onClick={() => setEditing(true)} className="inline-flex h-9 items-center gap-1 rounded-[8px] bg-sky-600 px-3 text-xs font-black text-white">
+              <Pencil className="h-3.5 w-3.5" />
+              {language === "ar" ? "تعديل" : "Edit"}
+            </button>
+          )}
+          <button type="button" onClick={() => onDelete(worker.id)} className="rounded-[8px] bg-rose-600 px-3 py-2 text-xs font-black text-white">{language === "ar" ? "حذف" : "Delete"}</button>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <DetailItem label={language === "ar" ? "الغسلات المكتملة" : "Completed washes"} value={String(worker.completedWashes)} />
+        <DetailItem label={language === "ar" ? "آخر نشاط" : "Last activity"} value={worker.lastActivityAt ? new Intl.DateTimeFormat(language === "ar" ? "ar-EG" : "en-EG", { dateStyle: "medium", timeStyle: "short" }).format(new Date(worker.lastActivityAt)) : "-"} />
+      </div>
+
+      <div className="mt-3 rounded-[8px] bg-slate-50 p-3 dark:bg-slate-800">
+        <span className="label">{language === "ar" ? "كلمة المرور" : "Password"}</span>
+        <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
+          {editing ? (
+            <input className="field" type={showPassword ? "text" : "password"} value={draft.password} onChange={(event) => setDraft({ ...draft, password: event.target.value })} placeholder={language === "ar" ? "اكتب كلمة مرور جديدة" : "Enter new password"} />
+          ) : (
+            <div className="field flex items-center text-sm font-black">
+              {worker.passwordPreview ? (showPassword ? worker.passwordPreview : "••••••••") : language === "ar" ? "غير محفوظة - عدّل العامل لإضافة كلمة مرور" : "Not stored - edit worker to add a password"}
+            </div>
+          )}
+          <button type="button" onClick={() => setShowPassword((current) => !current)} className="inline-flex h-12 items-center justify-center gap-2 rounded-[8px] bg-white px-4 text-sm font-black text-slate-700 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-200 dark:ring-slate-700">
+            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            {showPassword ? (language === "ar" ? "إخفاء" : "Hide") : language === "ar" ? "إظهار" : "Show"}
+          </button>
+        </div>
+      </div>
+
+      {editing ? (
+        <div className="mt-3 rounded-[8px] bg-slate-50 p-3 dark:bg-slate-800">
+          <span className="label">{language === "ar" ? "المناطق المسؤول عنها" : "Assigned areas"}</span>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            {settings.areas.filter((area) => area.active).map((area) => (
+              <label key={area.id} className="flex items-center gap-2 rounded-[8px] bg-white p-2 text-sm font-bold dark:bg-slate-900">
+                <input type="checkbox" checked={draft.areas.includes(area.id)} onChange={() => toggleArea(area.id)} />
+                {language === "ar" ? area.nameAr : area.nameEn}
+              </label>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </article>
   );
 }
 
@@ -809,6 +1420,22 @@ function BookingDetailsModal({
           </div>
         ) : null}
 
+        {booking.washProofImageDataUrl ? (
+          <div className="mt-4 rounded-[8px] bg-slate-50 p-4 dark:bg-slate-800">
+            <h3 className="text-sm font-black text-slate-500 dark:text-slate-300">{language === "ar" ? "إثبات إتمام الغسيل" : "Wash completion proof"}</h3>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={booking.washProofImageDataUrl} alt={booking.washProofImageName || "Wash proof"} className="mt-3 max-h-80 w-full rounded-[8px] object-cover" />
+            <p className="mt-2 text-xs font-bold text-slate-500">{booking.washProofImageName}</p>
+          </div>
+        ) : null}
+
+        {booking.complaint ? (
+          <div className="mt-4 rounded-[8px] border border-rose-200 bg-rose-50 p-4 dark:border-rose-900 dark:bg-rose-950/35">
+            <h3 className="text-sm font-black text-rose-800 dark:text-rose-100">{language === "ar" ? "شكوى العميل" : "Customer complaint"}</h3>
+            <p className="mt-2 text-sm leading-6 text-rose-900 dark:text-rose-100">{booking.complaint.text}</p>
+          </div>
+        ) : null}
+
         <div className="mt-4 rounded-[8px] bg-slate-50 p-4 dark:bg-slate-800">
           <h3 className="text-sm font-black text-slate-500 dark:text-slate-300">{t("bookingTimeline")}</h3>
           <div className="mt-3 grid gap-2">
@@ -826,7 +1453,7 @@ function BookingDetailsModal({
           <StatusSelect label={t("bookingStatus")} value={normalizedBookingStatus(booking.bookingStatus)} options={BOOKING_STATUSES} language={language} onChange={(value) => onStatusChange(value as Booking["bookingStatus"])} />
           {action ? (
             <button type="button" onClick={onPrimaryAction} className="inline-flex h-12 items-center justify-center gap-2 self-end rounded-[8px] bg-emerald-500 px-4 text-sm font-black text-white">
-              <Check className="h-4 w-4" />
+              <CheckCircle2 className="h-4 w-4" />
               {t(action.label)}
             </button>
           ) : null}
@@ -1031,6 +1658,43 @@ function bookingStatusLabel(status: string, language: "en" | "ar") {
     }
   } as const;
   return labels[language][normalized];
+}
+
+function slugifyAreaName(value: string) {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\u0600-\u06ff]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || `area-${Date.now()}`;
+}
+
+function statusBadgeClass(status: string) {
+  const normalized = normalizedBookingStatus(status);
+  if (normalized === "Pending") return "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-100";
+  if (normalized === "Confirmed") return "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-100";
+  if (normalized === "Completed") return "bg-sky-100 text-sky-800 dark:bg-sky-950/50 dark:text-sky-100";
+  return "bg-rose-100 text-rose-800 dark:bg-rose-950/50 dark:text-rose-100";
+}
+
+function buildRouteUrl(bookings: Booking[]) {
+  const stops = bookings
+    .map((booking) => booking.carLocation || [booking.address, booking.areaName].filter(Boolean).join(", "))
+    .filter(Boolean)
+    .slice(0, 10);
+
+  if (stops.length === 0) return "";
+  if (stops.length === 1) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stops[0])}`;
+
+  const params = new URLSearchParams({
+    api: "1",
+    origin: stops[0],
+    destination: stops[stops.length - 1],
+    travelmode: "driving"
+  });
+  const waypoints = stops.slice(1, -1).join("|");
+  if (waypoints) params.set("waypoints", waypoints);
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
 function customerWhatsAppUrl(booking: Booking, language: "en" | "ar") {

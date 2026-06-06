@@ -1,0 +1,46 @@
+[
+  {
+    "id": "worker_f6f033",
+    "name": "رامز",
+    "passwordHash": "22baee9cd1ac6540d783331145fc084e:539dc00d2e5055bce9e58ca8c82595ce5ee1d9d637dceae25f7245f77dd9e54aebc1d30a7180e385926a11f5d09c38cd717d06370e2d865f65b097e91ebae1f0",
+    "areas": [
+      "ebni-betak"
+    ],
+    "completedWashes": 0,
+    "createdAt": "2026-06-06T08:05:55.122Z",
+    "passwordPreview": "ramez"
+  },
+  {
+    "id": "worker_aa49fa",
+    "name": "فادى",
+    "passwordHash": "28242e0554d2fb0128edcc55e0d26264:9975d724ddad7fa551ac1d3268abb38b3451790258e1fadc30cf20579269c9b248a12a9794bd865bfa6ba50e5ccf2164b8f825bf33a4a038c4a8c84bd498f561",
+    "areas": [
+      "sakan-misr"
+    ],
+    "completedWashes": 0,
+    "createdAt": "2026-06-06T08:04:45.801Z",
+    "passwordPreview": "fady"
+  },
+  {
+    "id": "worker_490da3",
+    "name": "عادل",
+    "passwordHash": "b61533ccf893137f8148a9386e375dd3:081deb8990a542247efb556ce0a874238a8f43da210003da7d5687a5f127e77a0718d57df844dd875815ad3ead1e0234cb46d6d6fbb1d1c6b6cf008a69494bb4",
+    "areas": [
+      "800-feddan"
+    ],
+    "completedWashes": 0,
+    "createdAt": "2026-06-06T01:16:02.087Z",
+    "passwordPreview": "adel"
+  },
+  {
+    "id": "worker_7adc3b",
+    "name": "فتحى",
+    "passwordHash": "6d10da2ccaa5d0c1012d4d9dc35e0363:4e7f1272dbeb661130fea306502a10e853a16f0463a6927eb37d6d466261b3eaaa64865550f3cf8b064573a85fad8afefaabb9042701322a1f569f6f37e7becb",
+    "areas": [
+      "degla-palms"
+    ],
+    "completedWashes": 0,
+    "createdAt": "2026-06-06T01:15:39.966Z",
+    "passwordPreview": "fathi"
+  }
+]

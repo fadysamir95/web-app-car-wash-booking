@@ -1,0 +1,37 @@
+{
+  "servicePriceEgp": 25,
+  "paymentPhone": "01208878827",
+  "maxBookingsPerDay": 20,
+  "washWindow": "12:00 AM to 5:00 AM",
+  "washWindowAr": "12:00 صباحًا إلى 5:00 صباحًا",
+  "areas": [
+    {
+      "id": "degla-palms",
+      "nameEn": "Degla Palms",
+      "nameAr": "دجلة بالمز",
+      "priceEgp": 25,
+      "active": true
+    },
+    {
+      "id": "800-feddan",
+      "nameEn": "800 Feddan",
+      "nameAr": "800 فدان",
+      "priceEgp": 25,
+      "active": true
+    },
+    {
+      "id": "sakan-misr",
+      "nameEn": "Sakan Misr",
+      "nameAr": "سكن مصر",
+      "priceEgp": 25,
+      "active": true
+    },
+    {
+      "id": "ebni-betak",
+      "nameEn": "Ebni Betak",
+      "nameAr": "ابني بيتك",
+      "priceEgp": 25,
+      "active": true
+    }
+  ]
+}

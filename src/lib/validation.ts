@@ -8,6 +8,7 @@ import {
 } from "./constants";
 import { isBookingDateAllowed } from "./date";
 import type { BookingInput, PromoCode } from "./types";
+import type { ServiceSettings } from "./types";
 
 export type ValidationResult<T> =
   | { ok: true; data: T }
@@ -27,7 +28,11 @@ export function normalizePhone(value: string) {
   return digits;
 }
 
-export function validateBookingInput(raw: unknown, promoCodes: readonly PromoCode[] = PROMO_CODES.map((promo) => ({ ...promo, discountType: "amount", active: true }))): ValidationResult<BookingInput> {
+export function validateBookingInput(
+  raw: unknown,
+  promoCodes: readonly PromoCode[] = PROMO_CODES.map((promo) => ({ ...promo, discountType: "amount", active: true })),
+  settings?: ServiceSettings
+): ValidationResult<BookingInput> {
   const source = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
   const errors: Record<string, string> = {};
   const customerName = normalizeString(source.customerName);
@@ -54,7 +59,14 @@ export function validateBookingInput(raw: unknown, promoCodes: readonly PromoCod
   if (carBrand.length < 2) errors.carBrand = "Enter or choose the car brand.";
   if (carModel.length < 1) errors.carModel = "Enter the car model.";
   if (carColor.length < 2) errors.carColor = "Enter the car color.";
-  if (!SERVICE_AREAS.some((item) => item.id === area)) errors.area = "Choose one of the supported areas.";
+  const activeAreas: Array<{ id: string; nameEn: string }> = settings?.areas.filter((item) => item.active).map((item) => ({
+    id: item.id,
+    nameEn: item.nameEn
+  })) || SERVICE_AREAS.map((item) => ({
+    id: item.id,
+    nameEn: item.name.en
+  }));
+  if (!activeAreas.some((item) => item.id === area)) errors.area = "Choose one of the supported areas.";
   if (address.length < 6 && carLocation.length < 5) errors.location = "Enter a detailed address or share the car location.";
   if (!isBookingDateAllowed(bookingDate)) errors.bookingDate = "The earliest available booking date is tomorrow.";
   if (promoCode && !promoCodes.some((promo) => promo.active && promo.code === promoCode)) errors.promoCode = "This promo code is not valid.";
@@ -64,7 +76,7 @@ export function validateBookingInput(raw: unknown, promoCodes: readonly PromoCod
 
   if (Object.keys(errors).length > 0) return { ok: false, errors };
 
-  const selectedArea = SERVICE_AREAS.find((item) => item.id === area)!;
+  const selectedArea = activeAreas.find((item) => item.id === area)!;
 
   return {
     ok: true,
@@ -78,8 +90,8 @@ export function validateBookingInput(raw: unknown, promoCodes: readonly PromoCod
       carImageName: carImageName || undefined,
       governorate: DEFAULT_GOVERNORATE.id,
       city: DEFAULT_CITY.id,
-      area: area as BookingInput["area"],
-      areaName: selectedArea.name.en,
+      area,
+      areaName: selectedArea.nameEn,
       address: address || undefined,
       buildingNumber: buildingNumber || undefined,
       carLocation: carLocation || undefined,

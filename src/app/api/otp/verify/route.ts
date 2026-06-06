@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Too many OTP attempts." }, { status: 429 });
   }
 
-  const token = verifyOtp(phoneNumber, code);
+  const token = await verifyOtp(phoneNumber, code);
   if (!token) {
     return NextResponse.json({ error: "Invalid OTP." }, { status: 400 });
   }
