@@ -220,6 +220,25 @@ export async function updateBookingStatus(
   return booking;
 }
 
+export async function rateBooking(id: string, rating: number, ratingComment?: string) {
+  const bookings = await readBookings();
+  const booking = bookings.find((item) => item.id === id);
+  if (!booking || booking.bookingStatus !== "Completed") return null;
+
+  booking.rating = Math.min(Math.max(Math.round(rating), 1), 5);
+  booking.ratingComment = ratingComment?.trim() || undefined;
+  booking.ratedAt = new Date().toISOString();
+  booking.timeline.push({
+    status: "Completed",
+    label: "Service rated",
+    note: `${booking.rating}/5${booking.ratingComment ? ` - ${booking.ratingComment}` : ""}`,
+    createdAt: booking.ratedAt
+  });
+
+  await writeBookings(bookings);
+  return booking;
+}
+
 function migrateBookings(bookings: Booking[]) {
   let changed = false;
   const migrated = bookings.map((booking) => {

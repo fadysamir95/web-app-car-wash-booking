@@ -50,6 +50,9 @@ export type Booking = {
   bookingStatus: BookingStatus;
   expiresAt?: string;
   cancellationReason?: string;
+  rating?: number;
+  ratingComment?: string;
+  ratedAt?: string;
   timeline: BookingTimelineEvent[];
   createdAt: string;
 };

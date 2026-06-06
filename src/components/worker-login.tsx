@@ -37,7 +37,7 @@ export function WorkerLogin() {
           <div className="flex h-11 w-11 items-center justify-center rounded-[8px] bg-sky-600 text-white">
             <Lock className="h-5 w-5" />
           </div>
-          <LanguageSwitcher />
+          <LanguageSwitcher variant="surface" />
         </div>
         <h1 className="mt-4 text-2xl font-black text-slate-950 dark:text-white">{t("workerBoard")}</h1>
         <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">{t("signIn")}</p>

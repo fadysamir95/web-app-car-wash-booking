@@ -120,6 +120,13 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
   const revenueWeek = revenueSince(bookings, weekAgoValue);
   const revenueMonth = revenueSince(bookings, monthAgoValue);
   const freeBookings = bookings.filter((booking) => bookingFinalPrice(booking) === 0).length;
+  const paidOrConfirmedBookings = bookings.filter((booking) => booking.paymentStatus === "Verified").length;
+  const conversionRate = bookings.length > 0 ? Math.round((paidOrConfirmedBookings / bookings.length) * 100) : 0;
+  const topRevenueArea = topRevenueAreaLabel(bookings, language);
+  const topDemandDay = topDemandDayLabel(dailyCounts, language);
+  const unpaidCancellations = bookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Cancelled" && booking.paymentStatus === "Rejected").length;
+  const unpaidCancellationRate = bookings.length > 0 ? Math.round((unpaidCancellations / bookings.length) * 100) : 0;
+  const bestPromo = bestPromoLabel(bookings);
   const repeatCustomers = customers.filter((customer) => customer.totalBookings > 1).length;
   const pendingBookings = bookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Pending").length;
   const confirmedBookings = bookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Confirmed").length;
@@ -648,8 +655,13 @@ export function AdminDashboard({ initialBookings }: { initialBookings: Booking[]
               <p className="mt-2 text-4xl font-black text-slate-950 dark:text-white">{confirmedRevenue} EGP</p>
             </div>
             <AnalyticsCard
-              title={t("revenue")}
+              title={t("smartAnalytics")}
               items={[
+                [t("conversionRate"), `${conversionRate}%`],
+                [t("topRevenueArea"), topRevenueArea],
+                [t("topDemandDay"), topDemandDay],
+                [t("unpaidCancellationRate"), `${unpaidCancellationRate}%`],
+                [t("bestPromo"), bestPromo],
                 [t("revenueToday"), `${revenueToday} EGP`],
                 [t("revenueWeek"), `${revenueWeek} EGP`],
                 [t("revenueMonth"), `${revenueMonth} EGP`],
@@ -965,6 +977,32 @@ function revenueSince(bookings: Booking[], dateValue: string) {
   return bookings
     .filter((booking) => booking.paymentStatus === "Verified" && booking.bookingDate >= dateValue)
     .reduce((total, booking) => total + bookingFinalPrice(booking), 0);
+}
+
+function topRevenueAreaLabel(bookings: Booking[], language: "en" | "ar") {
+  const totals = bookings
+    .filter((booking) => booking.paymentStatus === "Verified")
+    .reduce<Record<string, number>>((acc, booking) => {
+      const label = areaLabel(booking.area, language);
+      acc[label] = (acc[label] || 0) + bookingFinalPrice(booking);
+      return acc;
+    }, {});
+  const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
+  return top ? `${top[0]} - ${top[1]} EGP` : "-";
+}
+
+function topDemandDayLabel(dailyCounts: Record<string, number>, language: "en" | "ar") {
+  const top = Object.entries(dailyCounts).sort((a, b) => b[1] - a[1])[0];
+  return top ? `${formatDisplayDate(top[0], language)} - ${top[1]}` : "-";
+}
+
+function bestPromoLabel(bookings: Booking[]) {
+  const counts = bookings.reduce<Record<string, number>>((acc, booking) => {
+    if (booking.promoCode) acc[booking.promoCode] = (acc[booking.promoCode] || 0) + 1;
+    return acc;
+  }, {});
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+  return top ? `${top[0]} - ${top[1]}` : "-";
 }
 
 function normalizedBookingStatus(status: string): Booking["bookingStatus"] {
