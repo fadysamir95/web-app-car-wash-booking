@@ -84,7 +84,7 @@ export function BookingForm() {
   const [otpSent, setOtpSent] = useState(false);
   const [otpDevCode, setOtpDevCode] = useState("");
   const [promoChecked, setPromoChecked] = useState(false);
-  const [returningBooking, setReturningBooking] = useState<Booking | null>(null);
+  const [returningBookings, setReturningBookings] = useState<Booking[]>([]);
   const [returningLookupDone, setReturningLookupDone] = useState(false);
 
   const steps = [
@@ -148,6 +148,11 @@ export function BookingForm() {
   const finalPrice = finalPriceFromPromo(appliedPromo, basePrice);
   const plateNumber = [form.plateLetters.trim(), form.plateDigits.trim()].filter(Boolean).join(" - ");
   const washWindow = language === "ar" ? settings.washWindowAr : settings.washWindow;
+  const lastBooking = returningBookings[0] || null;
+  const previousArea = lastBooking ? activeAreas.find((area) => area.id === lastBooking.area) : null;
+  const previousAreaPrice = previousArea?.priceEgp ?? lastBooking?.finalPriceEgp;
+  const showAreaPriceWarning = Boolean(selectedArea && previousAreaPrice !== undefined && selectedArea.priceEgp !== previousAreaPrice);
+  const previousCars = uniquePreviousCars(returningBookings);
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -156,7 +161,7 @@ export function BookingForm() {
       setOtpToken("");
       setOtpSent(false);
       setOtpDevCode("");
-      setReturningBooking(null);
+      setReturningBookings([]);
       setReturningLookupDone(false);
     }
     if (key === "bookingDate") setLoadingCapacity(true);
@@ -309,28 +314,28 @@ export function BookingForm() {
     try {
       const response = await fetch(`/api/bookings?query=${encodeURIComponent(form.phoneNumber.trim())}`, { cache: "no-store" });
       const payload = (await response.json().catch(() => ({}))) as { bookings?: Booking[] };
-      setReturningBooking(payload.bookings?.[0] || null);
+      setReturningBookings(payload.bookings || []);
     } finally {
       setReturningLookupDone(true);
     }
   }
 
-  function applyReturningBooking() {
-    if (!returningBooking) return;
-    const { plateLetters, plateDigits } = splitPlateNumber(returningBooking.plateNumber);
+  function applyReturningBooking(booking = lastBooking) {
+    if (!booking) return;
+    const { plateLetters, plateDigits } = splitPlateNumber(booking.plateNumber);
     setForm((current) => ({
       ...current,
-      customerName: returningBooking.customerName || current.customerName,
-      carBrand: returningBooking.carBrand || current.carBrand,
-      carModel: returningBooking.carModel || current.carModel,
-      carColor: returningBooking.carColor || current.carColor,
-      carYear: returningBooking.carYear || current.carYear,
+      customerName: booking.customerName || current.customerName,
+      carBrand: booking.carBrand || current.carBrand,
+      carModel: booking.carModel || current.carModel,
+      carColor: booking.carColor || current.carColor,
+      carYear: booking.carYear || current.carYear,
       plateLetters,
       plateDigits,
-      area: returningBooking.area || current.area,
-      address: returningBooking.address || current.address,
-      buildingNumber: returningBooking.buildingNumber || current.buildingNumber,
-      carLocation: returningBooking.carLocation || current.carLocation,
+      area: booking.area || current.area,
+      address: booking.address || current.address,
+      buildingNumber: booking.buildingNumber || current.buildingNumber,
+      carLocation: booking.carLocation || current.carLocation,
       notes: current.notes
     }));
     setErrors((current) => {
@@ -422,6 +427,8 @@ export function BookingForm() {
     }
 
     sessionStorage.setItem("latestBooking", JSON.stringify(payload.booking));
+    localStorage.setItem("latestBookingReference", payload.booking.id);
+    localStorage.setItem("latestBookingPhone", payload.booking.phoneNumber);
     window.location.href = `/success?id=${payload.booking.id}`;
   }
 
@@ -483,20 +490,44 @@ export function BookingForm() {
               {otpDevCode ? <p className="mt-2 text-xs font-black text-sky-700">{t("devOtpCode")}: {otpDevCode}</p> : null}
               {errors.otp ? <p className="error-text">{errors.otp}</p> : null}
             </div>
-            {otpToken && returningLookupDone && returningBooking ? (
-              <div className="rounded-[8px] border border-emerald-200 bg-emerald-50 p-3 text-sm leading-6 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/35 dark:text-emerald-100">
-                <p className="font-black">
-                  {language === "ar" ? "وجدنا حجز سابق بنفس رقم الهاتف." : "We found a previous booking for this phone."}
-                </p>
-                <p className="mt-1 font-bold">
-                  {returningBooking.carBrand} {returningBooking.carModel} - {returningBooking.areaName || returningBooking.area}
-                </p>
-                <button type="button" onClick={applyReturningBooking} className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-[8px] bg-emerald-600 px-4 text-sm font-black text-white">
-                  {language === "ar" ? "استخدم بيانات الحجز السابق" : "Use previous booking details"}
-                </button>
+            {otpToken && returningLookupDone && lastBooking ? (
+              <div className="rounded-[8px] border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/35 dark:text-emerald-100">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-black">
+                      {language === "ar" ? "مرحبًا بعودتك. وجدنا بيانات حجزك السابق." : "Welcome back. We found your previous booking details."}
+                    </p>
+                    <p className="mt-1 font-bold">
+                      {lastBooking.carBrand} {lastBooking.carModel} - {lastBooking.areaName || lastBooking.area}
+                    </p>
+                  </div>
+                  <button type="button" onClick={() => applyReturningBooking(lastBooking)} className="inline-flex h-12 items-center justify-center rounded-[8px] bg-emerald-600 px-5 text-sm font-black text-white shadow-sm">
+                    {language === "ar" ? "احجز بنفس بيانات آخر مرة" : "Book with last details"}
+                  </button>
+                </div>
+                {previousCars.length > 1 ? (
+                  <div className="mt-4 grid gap-2">
+                    <p className="text-xs font-black text-emerald-800 dark:text-emerald-100">
+                      {language === "ar" ? "أو اختر سيارة محفوظة:" : "Or choose a saved car:"}
+                    </p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {previousCars.map((booking) => (
+                        <button
+                          key={`${booking.carBrand}-${booking.carModel}-${booking.plateNumber || booking.id}`}
+                          type="button"
+                          onClick={() => applyReturningBooking(booking)}
+                          className="rounded-[8px] bg-white p-3 text-start text-xs font-black text-slate-800 ring-1 ring-emerald-200 transition hover:bg-emerald-100 dark:bg-slate-900 dark:text-slate-100 dark:ring-emerald-900"
+                        >
+                          <span className="block">{booking.carBrand} {booking.carModel} {booking.carYear ? `- ${booking.carYear}` : ""}</span>
+                          <span className="mt-1 block text-slate-500 dark:text-slate-300">{booking.carColor}{booking.plateNumber ? ` - ${booking.plateNumber}` : ""}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : null}
-            {otpToken && returningLookupDone && !returningBooking ? (
+            {otpToken && returningLookupDone && !lastBooking ? (
               <div className="rounded-[8px] bg-slate-50 p-3 text-xs font-bold text-slate-500 dark:bg-slate-900 dark:text-slate-300">
                 {language === "ar" ? "لا توجد بيانات حجز سابقة لهذا الرقم." : "No previous booking details found for this phone."}
               </div>
@@ -527,6 +558,13 @@ export function BookingForm() {
                 ))}
               </select>
             </Field>
+            {showAreaPriceWarning ? (
+              <div className="rounded-[8px] border border-amber-200 bg-amber-50 p-3 text-sm font-bold leading-6 text-amber-950 dark:border-amber-900 dark:bg-amber-950/35 dark:text-amber-100">
+                {language === "ar"
+                  ? `تنبيه: سعر المنطقة المختارة ${selectedArea?.priceEgp} EGP بدل ${previousAreaPrice} EGP في آخر حجز.`
+                  : `Notice: the selected area price is ${selectedArea?.priceEgp} EGP instead of ${previousAreaPrice} EGP from your last booking.`}
+              </div>
+            ) : null}
             <div className="grid gap-4 sm:grid-cols-[1fr_150px]">
               <Field label={language === "ar" ? "اسم الشارع (اختياري)" : "Street name (optional)"}>
                 <input name="address" className="field" value={form.address} onChange={(e) => update("address", e.target.value)} />
@@ -762,4 +800,20 @@ function splitPlateNumber(value?: string) {
     plateLetters: normalizePlateLetters(letters),
     plateDigits: digits.replace(/\D/g, "").slice(0, 6)
   };
+}
+
+function uniquePreviousCars(bookings: Booking[]) {
+  const seen = new Set<string>();
+  return bookings.filter((booking) => {
+    const key = [
+      booking.carBrand,
+      booking.carModel,
+      booking.carYear || "",
+      booking.carColor,
+      booking.plateNumber || ""
+    ].join("|").toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }

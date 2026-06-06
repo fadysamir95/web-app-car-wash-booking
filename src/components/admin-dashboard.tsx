@@ -19,7 +19,9 @@ type NotificationItem = {
 };
 type PendingDelete =
   | { type: "booking"; id: string; label: string }
-  | { type: "customer"; phoneNumber: string; label: string };
+  | { type: "customer"; phoneNumber: string; label: string }
+  | { type: "allBookings"; label: string }
+  | { type: "allCustomers"; label: string };
 
 export function AdminDashboard({
   initialBookings,
@@ -227,6 +229,20 @@ export function AdminDashboard({
     setBookings(payload.bookings);
   }
 
+  async function deleteAllBookings(reason: "bookings" | "customers") {
+    const response = await fetch("/api/admin/bookings", { method: "DELETE" });
+    if (!response.ok) return;
+    const payload = (await response.json()) as { bookings: Booking[] };
+    setBookings(payload.bookings);
+    setSelectedBookingId("");
+    knownBookingIds.current = new Set();
+    notify(
+      reason === "customers"
+        ? language === "ar" ? "تم مسح كل العملاء والحجوزات." : "All customers and bookings were deleted."
+        : language === "ar" ? "تم مسح كل الحجوزات." : "All bookings were deleted."
+    );
+  }
+
   function requestDeleteBooking(booking: Booking) {
     setPendingDelete({ type: "booking", id: booking.id, label: `${booking.id} - ${booking.customerName}` });
   }
@@ -235,12 +251,28 @@ export function AdminDashboard({
     setPendingDelete({ type: "customer", phoneNumber: customer.phoneNumber, label: `${customer.customerName} - ${customer.phoneNumber}` });
   }
 
+  function requestDeleteAllBookings() {
+    setPendingDelete({
+      type: "allBookings",
+      label: language === "ar" ? `سيتم مسح كل الحجوزات (${bookings.length}) نهائيًا.` : `This will permanently delete all bookings (${bookings.length}).`
+    });
+  }
+
+  function requestDeleteAllCustomers() {
+    setPendingDelete({
+      type: "allCustomers",
+      label: language === "ar" ? `سيتم مسح كل العملاء (${customers.length}) وكل الحجوزات المرتبطة بهم (${bookings.length}) نهائيًا.` : `This will permanently delete all customers (${customers.length}) and all related bookings (${bookings.length}).`
+    });
+  }
+
   async function confirmPendingDelete() {
     if (!pendingDelete) return;
     const current = pendingDelete;
     setPendingDelete(null);
     if (current.type === "booking") await deleteBooking(current.id);
-    else await deleteCustomer(current.phoneNumber);
+    else if (current.type === "customer") await deleteCustomer(current.phoneNumber);
+    else if (current.type === "allCustomers") await deleteAllBookings("customers");
+    else await deleteAllBookings("bookings");
   }
 
   function exportCustomersCsv() {
@@ -588,6 +620,12 @@ export function AdminDashboard({
               setQuery={setQuery}
               settings={settings}
             />
+            <div className="mt-3 flex justify-end">
+              <button type="button" onClick={requestDeleteAllBookings} disabled={bookings.length === 0} className="inline-flex h-10 items-center gap-2 rounded-[8px] bg-rose-600 px-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-400">
+                <Trash2 className="h-4 w-4" />
+                {language === "ar" ? "مسح كل الحجوزات" : "Delete all bookings"}
+              </button>
+            </div>
             <section className="mt-4 grid gap-3">
               {displayedBookings.map((booking) => (
                 <article key={booking.id} onClick={() => setSelectedBookingId(booking.id)} className="cursor-pointer rounded-[8px] bg-white p-4 shadow-sm transition hover:shadow-md dark:bg-slate-900">
@@ -659,6 +697,10 @@ export function AdminDashboard({
               <button type="button" onClick={prepareWhatsAppCampaign} className="inline-flex h-10 items-center gap-2 rounded-[8px] bg-emerald-500 px-3 text-sm font-black text-white">
                 <Send className="h-4 w-4" />
                 {t("sendWhatsAppAll")}
+              </button>
+              <button type="button" onClick={requestDeleteAllCustomers} disabled={customers.length === 0} className="inline-flex h-10 items-center gap-2 rounded-[8px] bg-rose-600 px-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-400">
+                <Trash2 className="h-4 w-4" />
+                {language === "ar" ? "مسح كل العملاء" : "Delete all customers"}
               </button>
             </div>
             {customers.length === 0 ? (
@@ -866,7 +908,7 @@ export function AdminDashboard({
       ) : null}
       {pendingDelete ? (
         <ConfirmDeleteModal
-          title={pendingDelete.type === "booking" ? t("deleteBookingConfirm") : t("deleteCustomerConfirm")}
+          title={deleteModalTitle(pendingDelete.type, language, t)}
           label={pendingDelete.label}
           onCancel={() => setPendingDelete(null)}
           onConfirm={confirmPendingDelete}
@@ -1503,6 +1545,13 @@ function ConfirmDeleteModal({
       </section>
     </div>
   );
+}
+
+function deleteModalTitle(type: PendingDelete["type"], language: "en" | "ar", t: (key: TranslationKey) => string) {
+  if (type === "booking") return t("deleteBookingConfirm");
+  if (type === "customer") return t("deleteCustomerConfirm");
+  if (type === "allCustomers") return language === "ar" ? "هل تريد مسح كل العملاء؟" : "Delete all customers?";
+  return language === "ar" ? "هل تريد مسح كل الحجوزات؟" : "Delete all bookings?";
 }
 
 function DetailItem({ label, value }: { label: string; value: string }) {

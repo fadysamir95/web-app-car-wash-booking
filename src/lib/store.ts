@@ -388,6 +388,11 @@ export async function deleteBookingData(id: string) {
   return remaining;
 }
 
+export async function deleteAllBookingData() {
+  await writeBookings([]);
+  return [];
+}
+
 export async function updateCustomerData(
   phoneNumber: string,
   updates: Partial<Pick<Booking, "customerName" | "phoneNumber" | "carBrand" | "carModel" | "carColor" | "plateNumber">>

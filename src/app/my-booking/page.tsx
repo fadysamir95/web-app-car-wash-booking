@@ -14,19 +14,27 @@ export default function MyBookingPage() {
   const { language, dir, t } = useLanguage();
   const [query, setQuery] = useState("");
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [deviceBooking, setDeviceBooking] = useState<Booking | null>(null);
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const ref = new URLSearchParams(window.location.search).get("ref")?.trim();
-    if (!ref || ref.length < 3) return;
+    const savedRef = window.localStorage.getItem("latestBookingReference")?.trim();
+    const lookupRef = ref && ref.length >= 3 ? ref : savedRef;
+    if (!lookupRef || lookupRef.length < 3) return;
     queueMicrotask(() => {
-      setQuery(ref);
-      setLoading(true);
-      setSearched(true);
-      fetch(`/api/bookings?query=${encodeURIComponent(ref)}`, { cache: "no-store" })
+      if (ref) {
+        setQuery(lookupRef);
+        setLoading(true);
+        setSearched(true);
+      }
+      fetch(`/api/bookings?query=${encodeURIComponent(lookupRef)}`, { cache: "no-store" })
         .then((response) => response.json())
-        .then((payload: { bookings: Booking[] }) => setBookings(payload.bookings || []))
+        .then((payload: { bookings: Booking[] }) => {
+          if (ref) setBookings(payload.bookings || []);
+          else setDeviceBooking(payload.bookings?.[0] || null);
+        })
         .finally(() => setLoading(false));
     });
   }, []);
@@ -62,6 +70,21 @@ export default function MyBookingPage() {
         <section className="rounded-[8px] bg-white p-4 shadow-sm dark:bg-slate-900 sm:p-6">
           <p className="text-sm font-black uppercase text-sky-700">{t("myBookings")}</p>
           <h1 className="mt-1 text-3xl font-black text-slate-950 dark:text-white">{t("findMyBooking")}</h1>
+          {deviceBooking ? (
+            <div className="mt-4 rounded-[8px] border border-sky-200 bg-sky-50 p-3 text-sm dark:border-sky-900 dark:bg-sky-950/35">
+              <p className="font-black text-slate-950 dark:text-white">
+                {language === "ar" ? "آخر حجز على هذا الجهاز" : "Latest booking on this device"}
+              </p>
+              <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="font-bold text-slate-600 dark:text-slate-200">
+                  {deviceBooking.id} - {formatDisplayDate(deviceBooking.bookingDate, language)} - {deviceBooking.areaName || deviceBooking.area}
+                </p>
+                <button type="button" onClick={() => { setQuery(deviceBooking.id); setBookings([deviceBooking]); setSearched(true); }} className="inline-flex h-10 items-center justify-center rounded-[8px] bg-sky-600 px-4 text-xs font-black text-white">
+                  {language === "ar" ? "عرض الحجز" : "View booking"}
+                </button>
+              </div>
+            </div>
+          ) : null}
           <form onSubmit={search} className="mt-5 grid gap-2 sm:grid-cols-[1fr_auto]">
             <input className="field" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("bookingLookupPlaceholder")} />
             <button type="submit" disabled={loading || query.trim().length < 3} className="inline-flex h-12 items-center justify-center gap-2 rounded-[8px] bg-sky-600 px-5 text-sm font-black text-white disabled:bg-slate-400">
