@@ -184,6 +184,17 @@ export function AdminDashboard({
   const cancelledBookings = bookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Cancelled").length;
   const completedWashes = bookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Completed").length;
   const complaints = bookings.filter((booking) => booking.complaint);
+  const workersWithRatings = useMemo(
+    () =>
+      workers.map((worker) => {
+        const ratings = bookings
+          .filter((booking) => booking.completedByWorkerId === worker.id && booking.workerRating)
+          .map((booking) => booking.workerRating || 0);
+        const averageRating = ratings.length ? Math.round((ratings.reduce((total, rating) => total + rating, 0) / ratings.length) * 10) / 10 : undefined;
+        return { ...worker, averageRating };
+      }),
+    [bookings, workers]
+  );
   const todayBookings = operationDateValue ? bookings.filter((booking) => booking.bookingDate === operationDateValue) : [];
   const dawnConfirmedBookings = todayBookings.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Confirmed");
   const displayedDawnBookings = operationAreaFilter ? dawnConfirmedBookings.filter((booking) => booking.area === operationAreaFilter) : dawnConfirmedBookings;
@@ -839,7 +850,7 @@ export function AdminDashboard({
           <TodayOperationsPanel
             bookings={displayedDawnBookings}
             allDateBookings={todayBookings}
-            workers={workers}
+            workers={workersWithRatings}
             settings={settings}
             language={language}
             todayValue={operationDateValue}
@@ -1503,6 +1514,11 @@ function TodayOperationsPanel({
                   <p>
                     <strong>{label.worker}: </strong>{worker?.name || "-"}
                   </p>
+                  {worker ? (
+                    <p>
+                      <strong>ETA: </strong>{workerEtaLabel(worker, booking.carLocation, language)}
+                    </p>
+                  ) : null}
                   <p>
                     <strong>{label.proof}: </strong>{booking.washProofImageDataUrl ? label.hasProof : label.noProof}
                   </p>
@@ -1828,6 +1844,18 @@ function WorkerCard({
         <DetailItem label={language === "ar" ? "الغسلات المكتملة" : "Completed washes"} value={String(worker.completedWashes)} />
         <DetailItem label={language === "ar" ? "آخر نشاط" : "Last activity"} value={worker.lastActivityAt ? new Intl.DateTimeFormat(language === "ar" ? "ar-EG" : "en-EG", { dateStyle: "medium", timeStyle: "short" }).format(new Date(worker.lastActivityAt)) : "-"} />
       </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <DetailItem label={language === "ar" ? "متوسط تقييم العامل" : "Worker average rating"} value={worker.averageRating ? `${worker.averageRating}/5` : "-"} />
+        <DetailItem label={language === "ar" ? "آخر تحديث GPS" : "Last GPS update"} value={worker.currentLocationUpdatedAt ? new Intl.DateTimeFormat(language === "ar" ? "ar-EG" : "en-EG", { dateStyle: "medium", timeStyle: "short" }).format(new Date(worker.currentLocationUpdatedAt)) : "-"} />
+      </div>
+
+      {worker.currentLat && worker.currentLng ? (
+        <a href={`https://www.google.com/maps/search/?api=1&query=${worker.currentLat},${worker.currentLng}`} target="_blank" rel="noreferrer" className="mt-3 inline-flex h-10 items-center gap-2 rounded-[8px] bg-sky-600 px-4 text-sm font-black text-white">
+          <MapPin className="h-4 w-4" />
+          {language === "ar" ? "عرض موقع العامل" : "View worker location"}
+        </a>
+      ) : null}
 
       <div className="mt-3 rounded-[8px] bg-slate-50 p-3 dark:bg-slate-800">
         <span className="label">{language === "ar" ? "كلمة المرور" : "Password"}</span>
@@ -2271,6 +2299,32 @@ function bestPromoLabel(bookings: Booking[]) {
   }, {});
   const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
   return top ? `${top[0]} - ${top[1]}` : "-";
+}
+
+function workerEtaLabel(worker: PublicWorker, carLocation: string | undefined, language: "en" | "ar") {
+  if (!worker.currentLat || !worker.currentLng || !carLocation) return "-";
+  const destination = parseGoogleMapsCoordinates(carLocation);
+  if (!destination) return "-";
+  const distanceKm = distanceBetweenKm(worker.currentLat, worker.currentLng, destination.lat, destination.lng);
+  const etaMinutes = Math.max(1, Math.round((distanceKm / 28) * 60));
+  return language === "ar" ? `${etaMinutes} دقيقة تقريبًا` : `~${etaMinutes} min`;
+}
+
+function parseGoogleMapsCoordinates(value: string) {
+  const match = value.match(/(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/);
+  if (!match) return null;
+  return { lat: Number(match[1]), lng: Number(match[2]) };
+}
+
+function distanceBetweenKm(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const radius = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function nextPromoCode(label: string, promos: PromoCode[]) {

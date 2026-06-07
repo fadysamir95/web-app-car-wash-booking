@@ -51,6 +51,8 @@ export function validateBookingInput(
   const bookingDate = normalizeString(source.bookingDate);
   const notes = normalizeString(source.notes);
   const promoCode = normalizeString(source.promoCode).toLowerCase();
+  const referredByCode = normalizeString(source.referredByCode).toUpperCase();
+  const loyaltyRewardRedeemed = source.loyaltyRewardRedeemed === true;
   const sourceLanguage = normalizeString(source.sourceLanguage) === "ar" ? "ar" : "en";
   const consent = source.consent === true;
   const washWindowAcknowledged = source.washWindowAcknowledged === true;
@@ -103,6 +105,8 @@ export function validateBookingInput(
       bookingDate,
       notes: notes || undefined,
       promoCode: promoCode || undefined,
+      referredByCode: referredByCode || undefined,
+      loyaltyRewardRedeemed,
       loyaltyPoints: 0,
       marketingConsent: consent,
       consent,

@@ -6,6 +6,7 @@ import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Clock, Loader2, MapPin, MessageCircle, Search, Sparkles } from "lucide-react";
 import { BookingForm } from "@/components/booking-form";
+import { AiSupportWidget } from "@/components/ai-support-widget";
 import { BrandLogo } from "@/components/brand-logo";
 import { DEFAULT_SERVICE, PROMO_CODES, SERVICE_AREAS, SERVICE_CONFIG } from "@/lib/constants";
 import { formatDisplayDate } from "@/lib/date";
@@ -118,6 +119,7 @@ export function HomePage() {
           <ArrowRight className="h-4 w-4 rtl:rotate-180" />
         </a>
       </div>
+      <AiSupportWidget />
     </main>
   );
 }

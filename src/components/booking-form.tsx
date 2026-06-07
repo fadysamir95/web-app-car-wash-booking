@@ -34,6 +34,8 @@ type FormState = {
   bookingDate: string;
   notes: string;
   promoCode: string;
+  referredByCode: string;
+  loyaltyRewardRedeemed: boolean;
   consent: boolean;
   washWindowAcknowledged: boolean;
   website: string;
@@ -57,6 +59,8 @@ const initialState: FormState = {
   bookingDate: "",
   notes: "",
   promoCode: "",
+  referredByCode: "",
+  loyaltyRewardRedeemed: false,
   consent: true,
   washWindowAcknowledged: true,
   website: ""
@@ -154,6 +158,21 @@ export function BookingForm() {
     };
   }, []);
 
+  useEffect(() => {
+    const raw = window.localStorage.getItem("rebookDraft");
+    if (!raw) return;
+    window.localStorage.removeItem("rebookDraft");
+    try {
+      const draft = JSON.parse(raw) as Partial<FormState>;
+      const timer = window.setTimeout(() => {
+        setForm((current) => ({ ...current, ...draft, bookingDate: "", promoCode: "", loyaltyRewardRedeemed: false }));
+      }, 0);
+      return () => window.clearTimeout(timer);
+    } catch {
+      // Ignore invalid local drafts.
+    }
+  }, []);
+
   const bookingNow = useMemo(() => new Date(bookingClock), [bookingClock]);
   const earliestBookingDate = getTomorrowDateValue(bookingNow);
   const upcomingDates = useMemo(() => getUpcomingDateValues(10, bookingNow), [bookingNow]);
@@ -170,6 +189,12 @@ export function BookingForm() {
   const previousAreaPrice = previousArea?.priceEgp ?? lastBooking?.finalPriceEgp;
   const showAreaPriceWarning = Boolean(selectedArea && previousAreaPrice !== undefined && selectedArea.priceEgp !== previousAreaPrice);
   const previousCars = uniquePreviousCars(returningBookings);
+  const loyaltyBalance = returningBookings.reduce((total, booking) => {
+    const earned = booking.bookingStatus === "Completed" ? booking.loyaltyPointsEarned ?? 10 : 0;
+    const redeemed = booking.loyaltyRewardRedeemed ? 100 : 0;
+    return total + earned - redeemed;
+  }, 0);
+  const canRedeemLoyalty = loyaltyBalance >= 100;
   const bookingClosedByCutoff = Boolean(form.bookingDate && !isBookingDateAllowed(form.bookingDate, bookingNow));
   const bookingClosed = bookingClosedByCutoff || Boolean(capacity?.fullyBooked);
   const bookingCloseNotice =
@@ -737,6 +762,18 @@ export function BookingForm() {
               </div>
               {promoChecked && appliedPromo ? <span className="mt-2 block text-xs font-black text-emerald-600">{appliedPromo.label} - {promoDisplayValue(appliedPromo)}</span> : null}
             </Field>
+            {/* <Field label={language === "ar" ? "كود دعوة صديق (اختياري)" : "Referral code (optional)"} error={errors.referredByCode}>
+              <input name="referredByCode" className={fieldClass(errors.referredByCode)} value={form.referredByCode} onChange={(e) => update("referredByCode", e.target.value.toUpperCase())} placeholder="VYX..." />
+              <p className="mt-2 text-xs font-bold text-slate-500 dark:text-slate-300">
+                {language === "ar" ? "لو الكود صحيح، صاحبك يحصل على 25 جنيه وأنت تحصل على خصم 25 جنيه." : "If valid, your friend earns 25 EGP and you get 25 EGP off."}
+              </p>
+            </Field> */}
+            <label className={`flex items-start gap-3 rounded-[8px] p-3 text-sm font-bold leading-6 ${canRedeemLoyalty ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/35 dark:text-emerald-100" : "bg-slate-50 text-slate-500 dark:bg-slate-900 dark:text-slate-300"}`}>
+              <input type="checkbox" className="mt-1 h-4 w-4 accent-emerald-600" disabled={!canRedeemLoyalty} checked={form.loyaltyRewardRedeemed && canRedeemLoyalty} onChange={(e) => update("loyaltyRewardRedeemed", e.target.checked)} />
+              <span>
+                {language === "ar" ? `رصيدك ${loyaltyBalance} نقطة. ${canRedeemLoyalty ? "استخدم 100 نقطة للحصول على غسلة مجانية." : "كل غسلة مكتملة = 10 نقاط، و100 نقطة = غسلة مجانية."}` : `You have ${loyaltyBalance} points. ${canRedeemLoyalty ? "Redeem 100 points for a free wash." : "Every completed wash earns 10 points. 100 points = free wash."}`}
+              </span>
+            </label>
             <div className="rounded-[8px] border border-sky-200 bg-sky-50 p-4 text-slate-950 dark:border-sky-900 dark:bg-sky-950/35 dark:text-sky-100">
               <div className="flex items-center justify-between gap-3 text-sm">
                 <span className="font-bold text-slate-600 dark:text-slate-300">{t("servicePrice")}</span>

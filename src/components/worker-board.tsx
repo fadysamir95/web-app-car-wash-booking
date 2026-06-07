@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, LogOut, Map, MapPin, MessageCircle } from "lucide-react";
 import type { Booking, PublicWorker } from "@/lib/types";
 import { SERVICE_CONFIG } from "@/lib/constants";
@@ -26,6 +26,25 @@ export function WorkerBoard({ initialBookings, worker }: { initialBookings: Book
     [bookings]
   );
   const routeUrl = useMemo(() => buildRouteUrl(activeBookings), [activeBookings]);
+
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        fetch("/api/worker/location", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          })
+        }).catch(() => undefined);
+      },
+      () => undefined,
+      { enableHighAccuracy: true, maximumAge: 60_000, timeout: 12_000 }
+    );
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, []);
 
   async function markWashed(booking: Booking) {
     const proof = proofs[booking.id];

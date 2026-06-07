@@ -104,6 +104,18 @@ export async function recordWorkerWash(id: string) {
   return publicWorker(worker);
 }
 
+export async function updateWorkerLocation(id: string, latitude: number, longitude: number) {
+  const workers = await readWorkers();
+  const worker = workers.find((item) => item.id === id);
+  if (!worker) return null;
+  worker.currentLat = latitude;
+  worker.currentLng = longitude;
+  worker.currentLocationUpdatedAt = new Date().toISOString();
+  worker.lastActivityAt = worker.currentLocationUpdatedAt;
+  await writeWorkers(workers);
+  return publicWorker(worker);
+}
+
 function defaultWorker(): Worker {
   return {
     id: "worker_default",

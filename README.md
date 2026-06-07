@@ -24,6 +24,9 @@ The local JSON store is intentionally isolated in `src/lib/store.ts`, so it can 
 - OTP phone verification before booking
 - Returning customer shortcut to reuse previous booking data
 - Multiple previous car selection for repeat customers
+- Rebook previous service from the My Bookings page
+- Loyalty rewards: every completed wash earns 10 points, and 100 points can be redeemed for a free wash
+- Referral program: customers get a personal referral code, friends get 25 EGP off, and referrers earn a 25 EGP reward record
 - Supported service scope only: Giza, New October City, Degla Palms, 800 Feddan, Sakan Misr, Ebni Betak
 - Browser geolocation helper with Google Maps link fallback
 - Building number required, street name and GPS/Maps location optional
@@ -33,6 +36,7 @@ The local JSON store is intentionally isolated in `src/lib/store.ts`, so it can 
 - Maximum 20 active bookings per day
 - Confirmation page payment flow with Instapay helper, copy number, and WhatsApp transfer proof message
 - My Bookings page with latest device booking shortcut and booking tracking
+- Worker and service rating after completed bookings, with optional feedback
 - Protected admin dashboard
 - Customers, bookings, revenue, smart offers, complaints, settings, workers, and next-day operations admin views
 - Admin filters by date, area, and search with reset
@@ -42,7 +46,10 @@ The local JSON store is intentionally isolated in `src/lib/store.ts`, so it can 
 - Daily booking counters
 - Admin notification history with unread badge, show all, and clear all
 - Worker dashboard with proof photo upload before marking a wash completed
+- Worker GPS location updates from the worker dashboard when browser location permission is granted
+- Admin worker location visibility and ETA estimates for next-dawn bookings when GPS coordinates are available
 - Car photo upload and admin preview
+- Built-in AI-style customer support widget for booking, pricing, payment, rewards, referrals, and booking-status questions
 - Dark mode support
 - Server-side validation, honeypot spam field, and basic in-memory rate limiting
 
@@ -87,9 +94,36 @@ data/bookings.json
 
 This file is ignored by git because it contains customer data.
 
-Stored booking fields include customer name, phone number, car brand, model, color, manufacture year, plate number, optional car photo data, area, address, building number, car location, booking date, time window, promo code, payment status, booking status, and created date.
+Stored booking fields include customer name, phone number, car brand, model, color, manufacture year, plate number, optional car photo data, area, address, building number, car location, booking date, time window, promo code, referral code, loyalty reward fields, payment status, booking status, worker rating, service rating, and created date.
 
-The current development model also stores marketing-ready fields such as referral code, marketing consent, loyalty points, customer ID, language source, governorate, city, and area assignment.
+The current development model also stores marketing-ready fields such as referral rewards, marketing consent, loyalty points, customer ID, language source, governorate, city, and area assignment.
+
+## Loyalty and Referrals
+
+- Each completed wash awards `10` loyalty points.
+- Customers can redeem `100` points for one free wash.
+- Referral codes are generated per customer phone number.
+- If a valid referral code is used, the new customer receives `25 EGP` off and the referrer gets a `25 EGP` reward record.
+- Loyalty and referral discounts are applied server-side during booking creation.
+
+## Worker GPS and ETA
+
+- The worker dashboard requests browser geolocation permission.
+- If allowed, worker coordinates are securely posted to `/api/worker/location`.
+- Admin worker cards show the latest GPS update and a map link.
+- Next-dawn booking cards show ETA when both worker GPS and the customer car location contain coordinates.
+
+## AI Customer Support
+
+The current assistant is a local rule-based support endpoint at `/api/assistant`. It answers common questions about:
+
+- Booking flow
+- Pricing
+- Payment instructions
+- Rewards and referrals
+- Booking status by phone number or booking reference
+
+This can later be upgraded to a real LLM provider without changing the customer-facing widget.
 
 ## Production Upgrade Path
 
@@ -127,7 +161,14 @@ create table bookings (
   notes text,
   promo_code text,
   referral_code text,
+  referred_by_code text,
+  referral_discount_egp numeric default 0,
+  referrer_reward_egp numeric default 0,
   loyalty_points integer not null default 0,
+  loyalty_points_earned integer default 0,
+  loyalty_reward_redeemed boolean not null default false,
+  worker_rating integer,
+  worker_feedback text,
   marketing_consent boolean not null default true,
   source_language text not null default 'en',
   payment_status text not null default 'Pending',

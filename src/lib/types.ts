@@ -43,6 +43,13 @@ export type Booking = {
   notes?: string;
   promoCode?: string;
   finalPriceEgp?: number;
+  referralCode?: string;
+  referredByCode?: string;
+  referralDiscountEgp?: number;
+  referrerRewardEgp?: number;
+  loyaltyPointsEarned?: number;
+  loyaltyRewardRedeemed?: boolean;
+  loyaltyDiscountEgp?: number;
   loyaltyPoints: number;
   marketingConsent: boolean;
   consent: true;
@@ -54,6 +61,8 @@ export type Booking = {
   cancellationReason?: string;
   rating?: number;
   ratingComment?: string;
+  workerRating?: number;
+  workerFeedback?: string;
   ratedAt?: string;
   complaint?: CustomerComplaint;
   washProofImageName?: string;
@@ -128,6 +137,10 @@ export type Worker = {
   passwordPreview?: string;
   areas: string[];
   completedWashes: number;
+  currentLat?: number;
+  currentLng?: number;
+  currentLocationUpdatedAt?: string;
+  averageRating?: number;
   lastActivityAt?: string;
   createdAt: string;
 };

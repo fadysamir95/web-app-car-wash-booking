@@ -6,9 +6,10 @@
     "areas": [
       "ebni-betak"
     ],
-    "completedWashes": 0,
+    "completedWashes": 1,
     "createdAt": "2026-06-06T08:05:55.122Z",
-    "passwordPreview": "ramez"
+    "passwordPreview": "ramez",
+    "lastActivityAt": "2026-06-07T10:07:59.205Z"
   },
   {
     "id": "worker_aa49fa",
@@ -29,9 +30,10 @@
     "areas": [
       "800-feddan"
     ],
-    "completedWashes": 0,
+    "completedWashes": 1,
     "createdAt": "2026-06-06T01:16:02.087Z",
-    "passwordPreview": "adel"
+    "passwordPreview": "adel",
+    "lastActivityAt": "2026-06-07T10:20:30.330Z"
   },
   {
     "id": "worker_7adc3b",
@@ -40,9 +42,9 @@
     "areas": [
       "degla-palms"
     ],
-    "completedWashes": 5,
+    "completedWashes": 8,
     "createdAt": "2026-06-06T01:15:39.966Z",
     "passwordPreview": "fathi",
-    "lastActivityAt": "2026-06-06T17:06:46.353Z"
+    "lastActivityAt": "2026-06-07T10:07:01.586Z"
   }
 ]

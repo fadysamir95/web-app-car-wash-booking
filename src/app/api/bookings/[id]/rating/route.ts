@@ -13,14 +13,24 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Too many attempts." }, { status: 429 });
   }
 
-  const body = (await request.json().catch(() => null)) as { rating?: number; ratingComment?: string } | null;
+  const body = (await request.json().catch(() => null)) as { rating?: number; ratingComment?: string; workerRating?: number; workerFeedback?: string } | null;
   const rating = Number(body?.rating || 0);
+  const workerRating = Number(body?.workerRating || 0);
   if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
     return NextResponse.json({ error: "Invalid rating." }, { status: 400 });
   }
+  if (workerRating && (!Number.isFinite(workerRating) || workerRating < 1 || workerRating > 5)) {
+    return NextResponse.json({ error: "Invalid worker rating." }, { status: 400 });
+  }
 
   const { id } = await context.params;
-  const booking = await rateBooking(id, rating, typeof body?.ratingComment === "string" ? body.ratingComment.slice(0, 300) : undefined);
+  const booking = await rateBooking(
+    id,
+    rating,
+    typeof body?.ratingComment === "string" ? body.ratingComment.slice(0, 300) : undefined,
+    workerRating || undefined,
+    typeof body?.workerFeedback === "string" ? body.workerFeedback.slice(0, 300) : undefined
+  );
   if (!booking) {
     return NextResponse.json({ error: "Booking is not ready for rating." }, { status: 400 });
   }

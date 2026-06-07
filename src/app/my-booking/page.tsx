@@ -204,6 +204,14 @@ function BookingDetails({ booking, language }: { booking: Booking; language: "en
           ))}
         </div>
       </div>
+
+      <Link
+        href="/#booking"
+        onClick={() => saveRebookDraft(currentBooking)}
+        className="mt-4 inline-flex h-12 w-full items-center justify-center rounded-[8px] bg-slate-950 px-4 text-sm font-black text-white dark:bg-white dark:text-slate-950"
+      >
+        {language === "ar" ? "القيام بحجز اخر" : "Make another booking"}
+      </Link>
     </article>
   );
 }
@@ -217,9 +225,11 @@ function formatCountdown(ms: number) {
 }
 
 function RatingForm({ booking, onRated }: { booking: Booking; onRated: (booking: Booking) => void }) {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const [rating, setRating] = useState(booking.rating || 5);
+  const [workerRating, setWorkerRating] = useState(booking.workerRating || 5);
   const [ratingComment, setRatingComment] = useState(booking.ratingComment || "");
+  const [workerFeedback, setWorkerFeedback] = useState(booking.workerFeedback || "");
   const [complaint, setComplaint] = useState(booking.complaint?.text || "");
   const [saving, setSaving] = useState(false);
 
@@ -228,7 +238,7 @@ function RatingForm({ booking, onRated }: { booking: Booking; onRated: (booking:
     const response = await fetch(`/api/bookings/${booking.id}/rating`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rating, ratingComment })
+      body: JSON.stringify({ rating, ratingComment, workerRating, workerFeedback })
     });
     const payload = (await response.json().catch(() => ({}))) as { booking?: Booking };
     setSaving(false);
@@ -249,8 +259,9 @@ function RatingForm({ booking, onRated }: { booking: Booking; onRated: (booking:
 
   if (booking.rating) {
     return (
+      <>
       <div className="mt-4 rounded-[8px] border border-emerald-300 bg-emerald-50 p-4 text-sm font-bold text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/35 dark:text-emerald-100">
-        <p>{t("ratingThanks")} - {booking.rating}/5</p>
+        <p>{t("ratingThanks")} - {booking.rating}/5{booking.workerRating ? ` | Worker ${booking.workerRating}/5` : ""}</p>
         {booking.rating < 3 && !booking.complaint ? (
           <div className="mt-4 rounded-[8px] bg-white p-3 dark:bg-slate-900">
             <p className="text-sm font-black text-slate-950 dark:text-white">Tell us what happened so we can fix it.</p>
@@ -262,6 +273,7 @@ function RatingForm({ booking, onRated }: { booking: Booking; onRated: (booking:
         ) : null}
         {booking.complaint ? <p className="mt-3 rounded-[8px] bg-white p-3 text-sm text-slate-700 dark:bg-slate-900 dark:text-slate-200">Complaint received. We will contact you soon.</p> : null}
       </div>
+      </>
     );
   }
 
@@ -281,6 +293,20 @@ function RatingForm({ booking, onRated }: { booking: Booking; onRated: (booking:
         ))}
       </div>
       <textarea className="field mt-3 min-h-24" value={ratingComment} onChange={(event) => setRatingComment(event.target.value)} placeholder={t("ratingComment")} />
+      <h3 className="mt-4 text-sm font-black text-slate-950 dark:text-white">{language === "ar" ? "تقييم العامل" : "Worker rating"}</h3>
+      <div className="mt-3 flex gap-2">
+        {[1, 2, 3, 4, 5].map((item) => (
+          <button
+            key={item}
+            type="button"
+            onClick={() => setWorkerRating(item)}
+            className={`h-10 w-10 rounded-[8px] text-sm font-black ${item <= workerRating ? "bg-emerald-600 text-white" : "bg-white text-slate-600 dark:bg-slate-900 dark:text-slate-200"}`}
+          >
+            {item}
+          </button>
+        ))}
+      </div>
+      <textarea className="field mt-3 min-h-20" value={workerFeedback} onChange={(event) => setWorkerFeedback(event.target.value)} placeholder={language === "ar" ? "ملاحظات اختيارية عن العامل" : "Optional worker feedback"} />
       <button type="button" onClick={submitRating} disabled={saving} className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-[8px] bg-sky-600 px-4 text-sm font-black text-white disabled:opacity-60">
         {saving ? t("checking") : t("submitRating")}
       </button>
@@ -308,6 +334,28 @@ function timelineLabel(label: string, language: "en" | "ar") {
     "Status changed to Cancelled": "تم تغيير الحالة إلى ملغي"
   };
   return labels[label] || label;
+}
+
+function saveRebookDraft(booking: Booking) {
+  const [plateLetters = "", plateDigits = ""] = (booking.plateNumber || "").split(" - ");
+  window.localStorage.setItem(
+    "rebookDraft",
+    JSON.stringify({
+      customerName: booking.customerName,
+      phoneNumber: booking.phoneNumber,
+      carBrand: booking.carBrand,
+      carModel: booking.carModel,
+      carColor: booking.carColor,
+      carYear: booking.carYear || "",
+      plateLetters,
+      plateDigits,
+      area: booking.area,
+      address: booking.address || "",
+      buildingNumber: booking.buildingNumber || "",
+      carLocation: booking.carLocation || "",
+      notes: booking.notes || ""
+    })
+  );
 }
 
 function timelineNote(note: string, language: "en" | "ar") {
