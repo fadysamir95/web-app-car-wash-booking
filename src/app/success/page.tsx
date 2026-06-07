@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, Copy, ExternalLink, MessageCircle, Share2, WalletCards } from "lucide-react";
+import { CheckCircle2, Copy, ExternalLink, Home, ListChecks, MessageCircle, Share2, WalletCards } from "lucide-react";
 import { PROMO_CODES, SERVICE_CONFIG } from "@/lib/constants";
 import { formatDisplayDate } from "@/lib/date";
 import { finalPriceFromPromo } from "@/lib/pricing";
@@ -91,11 +91,21 @@ export default function SuccessPage() {
   return (
     <main className="min-h-svh bg-slate-950 px-4 py-8 text-white" dir={dir}>
       <div className="mx-auto max-w-3xl">
-        <header className="mb-4 flex items-center justify-between">
+        <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <Link href="/" aria-label="VAYAX home">
             <BrandLogo compact dark size="lg" />
           </Link>
-          <LanguageSwitcher />
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href="/my-booking" className="inline-flex h-11 items-center justify-center gap-2 rounded-[8px] bg-white/10 px-4 text-sm font-black text-white ring-1 ring-white/15 transition hover:bg-white/15">
+              <ListChecks className="h-4 w-4" />
+              {t("myBookings")}
+            </Link>
+            <Link href="/" className="inline-flex h-11 items-center justify-center gap-2 rounded-[8px] bg-white/10 px-4 text-sm font-black text-white ring-1 ring-white/15 transition hover:bg-white/15">
+              <Home className="h-4 w-4" />
+              {t("backToHome")}
+            </Link>
+            <LanguageSwitcher />
+          </div>
         </header>
 
         <div className="glass-panel rounded-[8px] p-6 text-slate-950 sm:p-8">

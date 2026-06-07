@@ -254,7 +254,7 @@ export const translations = {
     plateLetters: "الحروف",
     plateDigits: "الأرقام",
     carPhoto: "صورة السيارة (اختياري)",
-    choosePhoto: "اختر اسم الصورة",
+    choosePhoto: "اختر الصورة",
     governorate: "المحافظة",
     city: "المدينة",
     area: "المنطقة",

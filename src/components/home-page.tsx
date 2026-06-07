@@ -87,7 +87,7 @@ export function HomePage() {
               <Fact icon={<MapPin className="h-4 w-4" />} title={`${activeAreas.length} ${t("supportedAreas")}`} />
             </div>
           </div>
-          <div className="pb-10 lg:flex lg:items-end lg:pb-4">
+          <div className="w-full pb-10 lg:flex lg:items-end lg:pb-4">
             <BookingForm />
           </div>
         </div>

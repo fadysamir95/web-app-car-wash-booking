@@ -12,6 +12,7 @@ type RouteContext = {
 type Updates = {
   bookingStatus?: "Pending" | "Confirmed" | "Completed" | "Cancelled";
   completedByWorkerId?: string;
+  completedByWorkerName?: string;
 };
 
 export async function PATCH(request: Request, context: RouteContext) {
@@ -42,6 +43,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Worker not found." }, { status: 400 });
     }
     updates.completedByWorkerId = body.workerId;
+    updates.completedByWorkerName = existingWorker.name;
   }
 
   const { id } = await context.params;

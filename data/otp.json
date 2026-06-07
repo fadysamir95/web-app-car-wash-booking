@@ -1,9 +1,4 @@
 {
   "otps": {},
-  "verified": {
-    "8c8d1cc9241c503ab1c0603d1ef68c21d3e36684c0d7a941": {
-      "phoneNumber": "01212210994",
-      "expiresAt": 1780828701619
-    }
-  }
+  "verified": {}
 }

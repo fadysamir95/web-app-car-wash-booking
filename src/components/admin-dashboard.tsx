@@ -52,6 +52,7 @@ export function AdminDashboard({
   const [tab, setTab] = useState<Tab>("todayOps");
   const [dateFilter, setDateFilter] = useState("");
   const [areaFilter, setAreaFilter] = useState("");
+  const [workerFilter, setWorkerFilter] = useState("");
   const [operationDateFilter, setOperationDateFilter] = useState("");
   const [operationAreaFilter, setOperationAreaFilter] = useState("");
   const [query, setQuery] = useState("");
@@ -90,14 +91,15 @@ export function AdminDashboard({
     return bookings.filter((booking) => {
       const matchesDate = !dateFilter || booking.bookingDate === dateFilter;
       const matchesArea = !areaFilter || booking.area === areaFilter;
+      const matchesWorker = !workerFilter || booking.completedByWorkerId === workerFilter;
       const matchesQuery =
         !normalized ||
         booking.customerName.toLowerCase().includes(normalized) ||
         booking.phoneNumber.toLowerCase().includes(normalized) ||
         (booking.plateNumber || "").toLowerCase().includes(normalized);
-      return matchesDate && matchesArea && matchesQuery;
+      return matchesDate && matchesArea && matchesWorker && matchesQuery;
     });
-  }, [bookings, dateFilter, areaFilter, query]);
+  }, [bookings, dateFilter, areaFilter, workerFilter, query]);
 
   const displayedBookings = useMemo(() => {
     if (tab === "pendingBookings") return filtered.filter((booking) => normalizedBookingStatus(booking.bookingStatus) === "Pending");
@@ -322,9 +324,16 @@ export function AdminDashboard({
     setBookings(payload.bookings);
   }
 
-  async function deleteAllBookings(reason: "bookings" | "customers") {
-    const response = await fetch("/api/admin/bookings", { method: "DELETE" });
-    if (!response.ok) return;
+  async function deleteAllBookings(reason: "bookings" | "customers", currentPassword?: string) {
+    const response = await fetch("/api/admin/bookings", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currentPassword })
+    });
+    if (!response.ok) {
+      notify(language === "ar" ? "كلمة مرور لوحة الإدارة غير صحيحة." : "Admin password is incorrect.");
+      return;
+    }
     const payload = (await response.json()) as { bookings: Booking[] };
     setBookings(payload.bookings);
     setSelectedBookingId("");
@@ -358,14 +367,14 @@ export function AdminDashboard({
     });
   }
 
-  async function confirmPendingDelete() {
+  async function confirmPendingDelete(currentPassword?: string) {
     if (!pendingDelete) return;
     const current = pendingDelete;
     setPendingDelete(null);
     if (current.type === "booking") await deleteBooking(current.id);
     else if (current.type === "customer") await deleteCustomer(current.phoneNumber);
-    else if (current.type === "allCustomers") await deleteAllBookings("customers");
-    else await deleteAllBookings("bookings");
+    else if (current.type === "allCustomers") await deleteAllBookings("customers", currentPassword);
+    else await deleteAllBookings("bookings", currentPassword);
   }
 
   function exportCustomersCsv() {
@@ -870,14 +879,19 @@ export function AdminDashboard({
             <Filters
               dateFilter={dateFilter}
               areaFilter={areaFilter}
+              workerFilter={workerFilter}
               query={query}
               setDateFilter={setDateFilter}
               setAreaFilter={setAreaFilter}
+              setWorkerFilter={setWorkerFilter}
               setQuery={setQuery}
               settings={settings}
+              workers={workers}
+              showWorkerFilter={tab === "completedWashes"}
               onReset={() => {
                 setDateFilter("");
                 setAreaFilter("");
+                setWorkerFilter("");
                 setQuery("");
               }}
             />
@@ -919,6 +933,11 @@ export function AdminDashboard({
                       <p>
                         <strong>{t("bookingStatus")}:</strong> {bookingStatusLabel(booking.bookingStatus, language)}
                       </p>
+                      {normalizedBookingStatus(booking.bookingStatus) === "Completed" ? (
+                        <p>
+                          <strong>{language === "ar" ? "تم الغسيل بواسطة" : "Washed by"}:</strong> {workerNameForBooking(booking, workers)}
+                        </p>
+                      ) : null}
                     </div>
                   </div>
 
@@ -1180,6 +1199,7 @@ export function AdminDashboard({
       {selectedBooking ? (
         <BookingDetailsModal
           booking={selectedBooking}
+          workers={workers}
           language={language}
           onClose={() => setSelectedBookingId("")}
           onDelete={() => requestDeleteBooking(selectedBooking)}
@@ -1207,6 +1227,8 @@ export function AdminDashboard({
         <ConfirmDeleteModal
           title={deleteModalTitle(pendingDelete.type, language, t)}
           label={pendingDelete.label}
+          requiresPassword={pendingDelete.type === "allBookings" || pendingDelete.type === "allCustomers"}
+          language={language}
           onCancel={() => setPendingDelete(null)}
           onConfirm={confirmPendingDelete}
           t={t}
@@ -1219,10 +1241,14 @@ export function AdminDashboard({
 function Filters(props: {
   dateFilter: string;
   areaFilter: string;
+  workerFilter: string;
   query: string;
   settings: ServiceSettings;
+  workers: PublicWorker[];
+  showWorkerFilter: boolean;
   setDateFilter: (value: string) => void;
   setAreaFilter: (value: string) => void;
+  setWorkerFilter: (value: string) => void;
   setQuery: (value: string) => void;
   onReset: () => void;
 }) {
@@ -1244,7 +1270,20 @@ function Filters(props: {
           ))}
         </select>
       </label>
-      <label className="sm:col-span-3">
+      {props.showWorkerFilter ? (
+        <label>
+          <span className="label">{language === "ar" ? "العامل" : "Worker"}</span>
+          <select className="field" value={props.workerFilter} onChange={(event) => props.setWorkerFilter(event.target.value)}>
+            <option value="">{language === "ar" ? "كل العمال" : "All workers"}</option>
+            {props.workers.map((worker) => (
+              <option key={worker.id} value={worker.id}>
+                {worker.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      <label className={props.showWorkerFilter ? "sm:col-span-2" : "sm:col-span-3"}>
         <span className="label">{t("search")}</span>
         <span className="relative block">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 rtl:left-auto rtl:right-3" />
@@ -1893,6 +1932,7 @@ function WorkerCard({
 
 function BookingDetailsModal({
   booking,
+  workers,
   language,
   onClose,
   onDelete,
@@ -1901,6 +1941,7 @@ function BookingDetailsModal({
   t
 }: {
   booking: Booking;
+  workers: PublicWorker[];
   language: "en" | "ar";
   onClose: () => void;
   onDelete: () => void;
@@ -1931,6 +1972,9 @@ function BookingDetailsModal({
           <DetailItem label={t("bookingDate")} value={formatDisplayDate(booking.bookingDate, language)} />
           <DetailItem label={t("assignedArea")} value={areaLabel(booking.area, language)} />
           <DetailItem label={t("servicePrice")} value={`${price} EGP`} />
+          {normalizedBookingStatus(booking.bookingStatus) === "Completed" ? (
+            <DetailItem label={language === "ar" ? "تم الغسيل بواسطة" : "Washed by"} value={workerNameForBooking(booking, workers)} />
+          ) : null}
           <DetailItem label={t("promoCode")} value={promo} />
           <DetailItem label={t("bookingReference")} value={booking.id} />
         </div>
@@ -1991,7 +2035,7 @@ function BookingDetailsModal({
               <div key={`${item.status}-${item.createdAt}`} className="rounded-[8px] bg-white p-3 text-sm dark:bg-slate-900">
                 <p className="font-black">{adminTimelineLabel(item.label, language)}</p>
                 <p className="mt-1 text-xs font-bold text-slate-500">{new Intl.DateTimeFormat(language === "ar" ? "ar-EG" : "en-EG", { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}</p>
-                {item.note ? <p className="mt-1 text-slate-600 dark:text-slate-300">{adminTimelineNote(item.note, language)}</p> : null}
+                {item.note ? <p className="mt-1 text-slate-600 dark:text-slate-300">{adminTimelineNote(item.note, language, booking)}</p> : null}
               </div>
             ))}
           </div>
@@ -2083,16 +2127,21 @@ function ConfirmStatusChangeModal({
 function ConfirmDeleteModal({
   title,
   label,
+  requiresPassword = false,
+  language,
   onCancel,
   onConfirm,
   t
 }: {
   title: string;
   label: string;
+  requiresPassword?: boolean;
+  language: "en" | "ar";
   onCancel: () => void;
-  onConfirm: () => void;
+  onConfirm: (currentPassword?: string) => void;
   t: (key: TranslationKey) => string;
 }) {
+  const [currentPassword, setCurrentPassword] = useState("");
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm" onClick={onCancel}>
       <section className="w-full max-w-md rounded-[8px] bg-white p-5 text-slate-950 shadow-2xl dark:bg-slate-900 dark:text-white" onClick={(event) => event.stopPropagation()}>
@@ -2105,11 +2154,23 @@ function ConfirmDeleteModal({
             <p className="mt-2 text-sm font-bold leading-6 text-slate-600 dark:text-slate-300">{label}</p>
           </div>
         </div>
+        {requiresPassword ? (
+          <label className="mt-5 block">
+            <span className="label">{language === "ar" ? "كلمة مرور لوحة الإدارة الحالية" : "Current admin password"}</span>
+            <input
+              type="password"
+              className="field"
+              value={currentPassword}
+              onChange={(event) => setCurrentPassword(event.target.value)}
+              autoFocus
+            />
+          </label>
+        ) : null}
         <div className="mt-5 grid gap-2 sm:grid-cols-2">
           <button type="button" onClick={onCancel} className="inline-flex h-11 items-center justify-center rounded-[8px] bg-slate-100 px-4 text-sm font-black text-slate-800 dark:bg-slate-800 dark:text-slate-100">
             {t("cancel")}
           </button>
-          <button type="button" onClick={onConfirm} className="inline-flex h-11 items-center justify-center rounded-[8px] bg-rose-600 px-4 text-sm font-black text-white">
+          <button type="button" onClick={() => onConfirm(currentPassword)} disabled={requiresPassword && currentPassword.length < 1} className="inline-flex h-11 items-center justify-center rounded-[8px] bg-rose-600 px-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500">
             {t("delete")}
           </button>
         </div>
@@ -2264,6 +2325,12 @@ function areaLabel(areaId: string, language: "en" | "ar") {
   return SERVICE_AREAS.find((area) => area.id === areaId)?.name[language] || areaId;
 }
 
+function workerNameForBooking(booking: Booking, workers: PublicWorker[]) {
+  if (booking.completedByWorkerName) return booking.completedByWorkerName;
+  if (booking.completedByWorkerId) return workers.find((worker) => worker.id === booking.completedByWorkerId)?.name || booking.completedByWorkerId;
+  return "-";
+}
+
 function bookingFinalPrice(booking: Booking) {
   return calculateBookingFinalPrice(booking, PROMO_CODES.map((promo) => ({ ...promo, discountType: "amount", active: true })));
 }
@@ -2413,15 +2480,19 @@ function adminTimelineLabel(label: string, language: "en" | "ar") {
   return labels[label] || label;
 }
 
-function adminTimelineNote(note: string, language: "en" | "ar") {
-  if (language === "en") return note;
+function adminTimelineNote(note: string, language: "en" | "ar", booking?: Booking) {
   if (note.startsWith("Completed by worker ")) {
-    return `تم تنفيذ الغسيل بواسطة العامل ${note.replace("Completed by worker ", "")}`;
+    const workerValue = note.replace("Completed by worker ", "");
+    const workerName = booking?.completedByWorkerName || workerValue;
+    return language === "ar" ? `تم تنفيذ الغسيل بواسطة العامل ${workerName}` : `Completed by worker ${workerName}`;
   }
+  if (language === "en") return note;
 
   const notes: Record<string, string> = {
     "Awaiting payment confirmation.": "في انتظار تأكيد الدفع.",
     "Free wash promo applied.": "تم تطبيق بروموكود غسلة مجانية.",
+    "Promo code applied.": "تم تطبيق كود الخصم.",
+    "Loyalty reward redeemed.": "تم استخدام مكافأة النقاط.",
     "Payment was not received within 3 hours.": "لم يتم استلام الدفع خلال 3 ساعات."
   };
   return notes[note] || note;

@@ -6,10 +6,10 @@
     "areas": [
       "ebni-betak"
     ],
-    "completedWashes": 1,
+    "completedWashes": 2,
     "createdAt": "2026-06-06T08:05:55.122Z",
     "passwordPreview": "ramez",
-    "lastActivityAt": "2026-06-07T10:07:59.205Z"
+    "lastActivityAt": "2026-06-07T13:03:17.209Z"
   },
   {
     "id": "worker_aa49fa",
@@ -18,10 +18,13 @@
     "areas": [
       "sakan-misr"
     ],
-    "completedWashes": 1,
+    "completedWashes": 2,
     "createdAt": "2026-06-06T08:04:45.801Z",
     "passwordPreview": "fady",
-    "lastActivityAt": "2026-06-06T22:44:49.412Z"
+    "lastActivityAt": "2026-06-07T13:11:41.782Z",
+    "currentLat": 29.890121,
+    "currentLng": 30.9145412319266,
+    "currentLocationUpdatedAt": "2026-06-07T13:11:41.782Z"
   },
   {
     "id": "worker_490da3",
@@ -42,9 +45,12 @@
     "areas": [
       "degla-palms"
     ],
-    "completedWashes": 8,
+    "completedWashes": 10,
     "createdAt": "2026-06-06T01:15:39.966Z",
     "passwordPreview": "fathi",
-    "lastActivityAt": "2026-06-07T10:07:01.586Z"
+    "lastActivityAt": "2026-06-07T13:11:38.965Z",
+    "currentLat": 29.890121,
+    "currentLng": 30.9145412319266,
+    "currentLocationUpdatedAt": "2026-06-07T12:43:13.202Z"
   }
 ]

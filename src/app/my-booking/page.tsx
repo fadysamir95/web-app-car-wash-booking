@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Clock, MessageCircle, Search, WalletCards } from "lucide-react";
+import { ArrowLeft, ChevronDown, Clock, MessageCircle, Search, Star, WalletCards } from "lucide-react";
 import { PROMO_CODES, SERVICE_CONFIG } from "@/lib/constants";
 import { formatDisplayDate } from "@/lib/date";
 import { bookingFinalPrice } from "@/lib/pricing";
@@ -18,6 +18,7 @@ export default function MyBookingPage() {
   const [deviceBooking, setDeviceBooking] = useState<Booking | null>(null);
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [openBookingIds, setOpenBookingIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const ref = new URLSearchParams(window.location.search).get("ref")?.trim();
@@ -33,8 +34,11 @@ export default function MyBookingPage() {
       fetch(`/api/bookings?query=${encodeURIComponent(lookupRef)}`, { cache: "no-store" })
         .then((response) => response.json())
         .then((payload: { bookings: Booking[] }) => {
-          if (ref) setBookings(payload.bookings || []);
-          else setDeviceBooking(payload.bookings?.[0] || null);
+          if (ref) {
+            const found = payload.bookings || [];
+            setBookings(found);
+            setOpenBookingIds(new Set(found.map((booking) => booking.id)));
+          } else setDeviceBooking(payload.bookings?.[0] || null);
         })
         .finally(() => setLoading(false));
     });
@@ -48,7 +52,9 @@ export default function MyBookingPage() {
     try {
       const response = await fetch(`/api/bookings?query=${encodeURIComponent(query.trim())}`, { cache: "no-store" });
       const payload = (await response.json()) as { bookings: Booking[] };
-      setBookings(payload.bookings || []);
+      const nextBookings = payload.bookings || [];
+      setBookings(nextBookings);
+      setOpenBookingIds(new Set(nextBookings.filter(shouldOpenBookingByDefault).map((booking) => booking.id)));
     } finally {
       setLoading(false);
     }
@@ -80,7 +86,7 @@ export default function MyBookingPage() {
                 <p className="font-bold text-slate-600 dark:text-slate-200">
                   {deviceBooking.id} - {formatDisplayDate(deviceBooking.bookingDate, language)} - {deviceBooking.areaName || deviceBooking.area}
                 </p>
-                <button type="button" onClick={() => { setQuery(deviceBooking.id); setBookings([deviceBooking]); setSearched(true); }} className="inline-flex h-10 items-center justify-center rounded-[8px] bg-sky-600 px-4 text-xs font-black text-white">
+                <button type="button" onClick={() => { setQuery(deviceBooking.id); setBookings([deviceBooking]); setOpenBookingIds(new Set([deviceBooking.id])); setSearched(true); }} className="inline-flex h-10 items-center justify-center rounded-[8px] bg-sky-600 px-4 text-xs font-black text-white">
                   {language === "ar" ? "عرض الحجز" : "View booking"}
                 </button>
               </div>
@@ -96,7 +102,23 @@ export default function MyBookingPage() {
         </section>
 
         <div className="mt-4 grid gap-4">
-          {bookings.map((booking) => <BookingDetails key={booking.id} booking={booking} language={language} />)}
+          {searched && bookings.length > 0 ? <LoyaltyBalanceCard bookings={bookings} language={language} /> : null}
+          {bookings.map((booking) => (
+            <BookingDetails
+              key={booking.id}
+              booking={booking}
+              language={language}
+              isOpen={openBookingIds.has(booking.id)}
+              onToggle={() => {
+                setOpenBookingIds((current) => {
+                  const next = new Set(current);
+                  if (next.has(booking.id)) next.delete(booking.id);
+                  else next.add(booking.id);
+                  return next;
+                });
+              }}
+            />
+          ))}
           {searched && !loading && bookings.length === 0 ? <div className="rounded-[8px] bg-white p-6 text-sm font-bold text-slate-500 dark:bg-slate-900">{t("noBookingFound")}</div> : null}
         </div>
       </div>
@@ -104,7 +126,32 @@ export default function MyBookingPage() {
   );
 }
 
-function BookingDetails({ booking, language }: { booking: Booking; language: "en" | "ar" }) {
+function LoyaltyBalanceCard({ bookings, language }: { bookings: Booking[]; language: "en" | "ar" }) {
+  const balance = loyaltyBalanceForBookings(bookings);
+  const completedCount = bookings.filter((booking) => booking.bookingStatus === "Completed").length;
+  const nextRewardPoints = Math.max(100 - (balance % 100), 0);
+
+  return (
+    <section className="rounded-[8px] border border-emerald-200 bg-emerald-50 p-4 shadow-sm dark:border-emerald-900 dark:bg-emerald-950/35">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-black text-emerald-800 dark:text-emerald-100">{language === "ar" ? "رصيد نقاطك" : "Your points balance"}</p>
+          <h2 className="mt-1 text-3xl font-black text-slate-950 dark:text-white">{balance} {language === "ar" ? "نقطة" : "points"}</h2>
+        </div>
+        <div className="rounded-[8px] bg-white px-4 py-3 text-sm font-black text-emerald-800 shadow-sm dark:bg-slate-900 dark:text-emerald-100">
+          {language === "ar" ? `${completedCount} غسلة مكتملة` : `${completedCount} completed washes`}
+        </div>
+      </div>
+      <p className="mt-3 text-sm font-bold leading-6 text-emerald-900 dark:text-emerald-100">
+        {balance >= 100
+          ? language === "ar" ? "يمكنك استخدام 100 نقطة للحصول على غسلة مجانية في الحجز القادم." : "You can redeem 100 points for a free wash on your next booking."
+          : language === "ar" ? `متبقي ${nextRewardPoints} نقطة للحصول على غسلة مجانية.` : `${nextRewardPoints} points left to unlock a free wash.`}
+      </p>
+    </section>
+  );
+}
+
+function BookingDetails({ booking, language, isOpen, onToggle }: { booking: Booking; language: "en" | "ar"; isOpen: boolean; onToggle: () => void }) {
   const { t } = useLanguage();
   const [currentBooking, setCurrentBooking] = useState(booking);
   const [now, setNow] = useState(0);
@@ -139,6 +186,24 @@ function BookingDetails({ booking, language }: { booking: Booking; language: "en
     };
   }, []);
 
+  if (!isOpen) {
+    return (
+      <article className="rounded-[8px] bg-white p-4 shadow-sm dark:bg-slate-900">
+        <button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-3 text-start">
+          <div>
+            <p className="text-xs font-black uppercase text-sky-700">{t("bookingReference")}: {currentBooking.id}</p>
+            <h2 className="mt-1 text-lg font-black text-slate-950 dark:text-white">{currentBooking.carBrand} {currentBooking.carModel} - {currentBooking.carColor}</h2>
+            <p className="mt-1 text-sm font-bold text-slate-500">{formatDisplayDate(currentBooking.bookingDate, language)} - {currentBooking.areaName || currentBooking.area}</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-black text-sky-800 dark:bg-sky-950 dark:text-sky-200">{displayBookingStatusLabel(currentBooking.bookingStatus, language)}</span>
+            <ChevronDown className="h-5 w-5 text-slate-400" />
+          </div>
+        </button>
+      </article>
+    );
+  }
+
   return (
     <article className="rounded-[8px] bg-white p-4 shadow-sm dark:bg-slate-900 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -147,7 +212,10 @@ function BookingDetails({ booking, language }: { booking: Booking; language: "en
           <h2 className="mt-1 text-2xl font-black text-slate-950 dark:text-white">{currentBooking.customerName}</h2>
           <p className="mt-1 text-sm font-bold text-slate-500">{currentBooking.phoneNumber}</p>
         </div>
-        <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-black text-sky-800 dark:bg-sky-950 dark:text-sky-200">{displayBookingStatusLabel(currentBooking.bookingStatus, language)}</span>
+        <button type="button" onClick={onToggle} className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-xs font-black text-sky-800 dark:bg-sky-950 dark:text-sky-200">
+          {displayBookingStatusLabel(currentBooking.bookingStatus, language)}
+          <ChevronDown className="h-4 w-4 rotate-180" />
+        </button>
       </div>
 
       <div className="mt-4 grid gap-3 rounded-[8px] bg-slate-50 p-4 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200 sm:grid-cols-2">
@@ -188,6 +256,14 @@ function BookingDetails({ booking, language }: { booking: Booking; language: "en
         </a>
       ) : null}
 
+      {currentBooking.bookingStatus === "Completed" && currentBooking.washProofImageDataUrl ? (
+        <div className="mt-4 rounded-[8px] border border-sky-200 bg-sky-50 p-4 dark:border-sky-900 dark:bg-sky-950/35">
+          <h3 className="text-sm font-black text-slate-950 dark:text-white">{language === "ar" ? "صورة السيارة بعد الغسيل" : "Car photo after wash"}</h3>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={currentBooking.washProofImageDataUrl} alt={language === "ar" ? "صورة السيارة بعد الغسيل" : "Car after wash"} className="mt-3 max-h-96 w-full rounded-[8px] object-cover" />
+        </div>
+      ) : null}
+
       {currentBooking.bookingStatus === "Completed" ? (
         <RatingForm booking={currentBooking} onRated={setCurrentBooking} />
       ) : null}
@@ -199,7 +275,7 @@ function BookingDetails({ booking, language }: { booking: Booking; language: "en
             <div key={`${item.status}-${item.createdAt}`} className="rounded-[8px] border border-slate-200 p-3 text-sm dark:border-slate-800">
               <p className="font-black text-slate-950 dark:text-white">{displayTimelineLabel(item.label, language)}</p>
               <p className="mt-1 text-xs font-bold text-slate-500">{new Intl.DateTimeFormat(language === "ar" ? "ar-EG" : "en-EG", { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}</p>
-              {item.note ? <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{displayTimelineNote(item.note, language)}</p> : null}
+              {item.note ? <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{displayTimelineNote(item.note, language, currentBooking)}</p> : null}
             </div>
           ))}
         </div>
@@ -222,6 +298,18 @@ function formatCountdown(ms: number) {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
   return [hours, minutes, seconds].map((item) => String(item).padStart(2, "0")).join(":");
+}
+
+function shouldOpenBookingByDefault(booking: Booking) {
+  return booking.bookingStatus === "Pending" || booking.bookingStatus === "Confirmed";
+}
+
+function loyaltyBalanceForBookings(bookings: Booking[]) {
+  return bookings.reduce((total, booking) => {
+    const earned = booking.bookingStatus === "Completed" ? booking.loyaltyPointsEarned && booking.loyaltyPointsEarned > 0 ? booking.loyaltyPointsEarned : 10 : 0;
+    const redeemed = booking.loyaltyRewardRedeemed ? 100 : 0;
+    return total + earned - redeemed;
+  }, 0);
 }
 
 function RatingForm({ booking, onRated }: { booking: Booking; onRated: (booking: Booking) => void }) {
@@ -264,14 +352,14 @@ function RatingForm({ booking, onRated }: { booking: Booking; onRated: (booking:
         <p>{t("ratingThanks")} - {booking.rating}/5{booking.workerRating ? ` | Worker ${booking.workerRating}/5` : ""}</p>
         {booking.rating < 3 && !booking.complaint ? (
           <div className="mt-4 rounded-[8px] bg-white p-3 dark:bg-slate-900">
-            <p className="text-sm font-black text-slate-950 dark:text-white">Tell us what happened so we can fix it.</p>
-            <textarea className="field mt-3 min-h-24" value={complaint} onChange={(event) => setComplaint(event.target.value)} placeholder="Write your complaint here" />
+            <p className="text-sm font-black text-slate-950 dark:text-white">{language === "ar" ? "احكِ لنا ما حدث حتى نتمكن من حل المشكلة." : "Tell us what happened so we can fix it."}</p>
+            <textarea className="field mt-3 min-h-24" value={complaint} onChange={(event) => setComplaint(event.target.value)} placeholder={language === "ar" ? "اكتب الشكوى هنا" : "Write your complaint here"} />
             <button type="button" onClick={submitComplaint} disabled={saving || complaint.trim().length < 10} className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-[8px] bg-rose-600 px-4 text-sm font-black text-white disabled:opacity-60">
-              Send complaint
+              {language === "ar" ? "إرسال الشكوى" : "Send complaint"}
             </button>
           </div>
         ) : null}
-        {booking.complaint ? <p className="mt-3 rounded-[8px] bg-white p-3 text-sm text-slate-700 dark:bg-slate-900 dark:text-slate-200">Complaint received. We will contact you soon.</p> : null}
+        {booking.complaint ? <p className="mt-3 rounded-[8px] bg-white p-3 text-sm text-slate-700 dark:bg-slate-900 dark:text-slate-200">{language === "ar" ? "تم استلام الشكوى. سنتواصل معك قريبًا." : "Complaint received. We will contact you soon."}</p> : null}
       </div>
       </>
     );
@@ -280,36 +368,48 @@ function RatingForm({ booking, onRated }: { booking: Booking; onRated: (booking:
   return (
     <div className="mt-4 rounded-[8px] border border-sky-200 bg-sky-50 p-4 dark:border-sky-900 dark:bg-sky-950/35">
       <h3 className="text-sm font-black text-slate-950 dark:text-white">{t("rateService")}</h3>
-      <div className="mt-3 flex gap-2">
-        {[1, 2, 3, 4, 5].map((item) => (
-          <button
-            key={item}
-            type="button"
-            onClick={() => setRating(item)}
-            className={`h-10 w-10 rounded-[8px] text-sm font-black ${item <= rating ? "bg-sky-600 text-white" : "bg-white text-slate-600 dark:bg-slate-900 dark:text-slate-200"}`}
-          >
-            {item}
-          </button>
-        ))}
-      </div>
+      <StarRating value={rating} onChange={setRating} color="sky" label={language === "ar" ? "تقييم الخدمة" : "Service rating"} />
       <textarea className="field mt-3 min-h-24" value={ratingComment} onChange={(event) => setRatingComment(event.target.value)} placeholder={t("ratingComment")} />
       <h3 className="mt-4 text-sm font-black text-slate-950 dark:text-white">{language === "ar" ? "تقييم العامل" : "Worker rating"}</h3>
-      <div className="mt-3 flex gap-2">
-        {[1, 2, 3, 4, 5].map((item) => (
-          <button
-            key={item}
-            type="button"
-            onClick={() => setWorkerRating(item)}
-            className={`h-10 w-10 rounded-[8px] text-sm font-black ${item <= workerRating ? "bg-emerald-600 text-white" : "bg-white text-slate-600 dark:bg-slate-900 dark:text-slate-200"}`}
-          >
-            {item}
-          </button>
-        ))}
-      </div>
+      <StarRating value={workerRating} onChange={setWorkerRating} color="emerald" label={language === "ar" ? "تقييم العامل" : "Worker rating"} />
       <textarea className="field mt-3 min-h-20" value={workerFeedback} onChange={(event) => setWorkerFeedback(event.target.value)} placeholder={language === "ar" ? "ملاحظات اختيارية عن العامل" : "Optional worker feedback"} />
       <button type="button" onClick={submitRating} disabled={saving} className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-[8px] bg-sky-600 px-4 text-sm font-black text-white disabled:opacity-60">
         {saving ? t("checking") : t("submitRating")}
       </button>
+    </div>
+  );
+}
+
+function StarRating({
+  value,
+  onChange,
+  color,
+  label
+}: {
+  value: number;
+  onChange: (value: number) => void;
+  color: "sky" | "emerald";
+  label: string;
+}) {
+  const activeClass = color === "sky" ? "text-sky-500" : "text-emerald-500";
+  const focusClass = color === "sky" ? "focus-visible:ring-sky-500" : "focus-visible:ring-emerald-500";
+
+  return (
+    <div className="mt-3 flex items-center gap-1" role="radiogroup" aria-label={label}>
+      {[1, 2, 3, 4, 5].map((item) => (
+        <button
+          key={item}
+          type="button"
+          role="radio"
+          aria-checked={value === item}
+          aria-label={`${item} / 5`}
+          onClick={() => onChange(item)}
+          className={`grid h-11 w-11 place-items-center rounded-[8px] bg-white text-slate-300 shadow-sm ring-1 ring-slate-200 transition hover:scale-105 focus:outline-none focus-visible:ring-2 dark:bg-slate-900 dark:text-slate-600 dark:ring-slate-700 ${focusClass}`}
+        >
+          <Star className={`h-6 w-6 ${item <= value ? `${activeClass} fill-current` : ""}`} />
+        </button>
+      ))}
+      <span className="ms-2 text-sm font-black text-slate-600 dark:text-slate-300">{value}/5</span>
     </div>
   );
 }
@@ -379,6 +479,7 @@ function displayBookingStatusLabel(status: string, language: "en" | "ar") {
 }
 
 function displayTimelineLabel(label: string, language: "en" | "ar") {
+  if (language === "en" && label === "Vehicle washed with proof") return "Vehicle washed";
   if (language === "en") return label;
   if (label.startsWith("Current status: ")) {
     return `الحالة الحالية: ${displayBookingStatusLabel(label.replace("Current status: ", ""), language)}`;
@@ -392,22 +493,26 @@ function displayTimelineLabel(label: string, language: "en" | "ar") {
     "Status changed to Confirmed": "تم تغيير الحالة إلى مؤكد",
     "Status changed to Completed": "تم تغيير الحالة إلى تم الغسيل",
     "Status changed to Cancelled": "تم تغيير الحالة إلى ملغي",
-    "Vehicle washed with proof": "تم تسجيل الغسيل مع صورة إثبات",
+    "Vehicle washed with proof": "تم غسل السيارة",
     "Service rated": "تم تقييم الخدمة",
     "Customer complaint received": "تم استلام شكوى العميل"
   };
   return labels[label] || timelineLabel(label, language);
 }
 
-function displayTimelineNote(note: string, language: "en" | "ar") {
-  if (language === "en") return note;
+function displayTimelineNote(note: string, language: "en" | "ar", booking?: Booking) {
   if (note.startsWith("Completed by worker ")) {
-    return `تم تنفيذ الغسيل بواسطة العامل ${note.replace("Completed by worker ", "")}`;
+    const workerValue = note.replace("Completed by worker ", "");
+    const workerName = booking?.completedByWorkerName || workerValue;
+    return language === "ar" ? `تم تنفيذ الغسيل بواسطة العامل ${workerName}` : `Completed by worker ${workerName}`;
   }
+  if (language === "en") return note;
 
   const notes: Record<string, string> = {
     "Awaiting payment confirmation.": "في انتظار تأكيد الدفع.",
     "Free wash promo applied.": "تم تطبيق بروموكود غسلة مجانية.",
+    "Promo code applied.": "تم تطبيق كود الخصم.",
+    "Loyalty reward redeemed.": "تم استخدام مكافأة النقاط.",
     "Payment was not received within 3 hours.": "لم يتم استلام الدفع خلال 3 ساعات."
   };
   return notes[note] || timelineNote(note, language);

@@ -99,3 +99,16 @@ export async function consumeOtpToken(phoneNumber: string, token?: string) {
   await writeOtpState(state);
   return true;
 }
+
+export async function verifyOtpToken(phoneNumber: string, token?: string) {
+  if (!token) return false;
+  const state = await readOtpState();
+  const record = state.verified[token];
+  if (!record || record.expiresAt < Date.now() || record.phoneNumber !== phoneNumber) {
+    delete state.verified[token];
+    await writeOtpState(state);
+    return false;
+  }
+
+  return true;
+}

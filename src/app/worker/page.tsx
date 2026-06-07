@@ -16,7 +16,11 @@ export default async function WorkerPage() {
   const worker = workerId ? await getWorkerById(workerId) : null;
   const allowedAreas = new Set(worker?.areas || []);
   const bookings = (await readBookings()).filter(
-    (booking) => (booking.bookingDate === today || booking.bookingDate === tomorrow) && (allowedAreas.size === 0 || allowedAreas.has(booking.area))
+    (booking) => {
+      if (booking.bookingDate !== today && booking.bookingDate !== tomorrow) return false;
+      if (booking.completedByWorkerId) return booking.completedByWorkerId === workerId;
+      return allowedAreas.size === 0 || allowedAreas.has(booking.area);
+    }
   );
   return <WorkerBoard initialBookings={bookings} worker={worker ? publicWorker(worker) : null} />;
 }

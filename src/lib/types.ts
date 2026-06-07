@@ -43,10 +43,6 @@ export type Booking = {
   notes?: string;
   promoCode?: string;
   finalPriceEgp?: number;
-  referralCode?: string;
-  referredByCode?: string;
-  referralDiscountEgp?: number;
-  referrerRewardEgp?: number;
   loyaltyPointsEarned?: number;
   loyaltyRewardRedeemed?: boolean;
   loyaltyDiscountEgp?: number;
@@ -69,6 +65,7 @@ export type Booking = {
   washProofImageDataUrl?: string;
   washProofUploadedAt?: string;
   completedByWorkerId?: string;
+  completedByWorkerName?: string;
   timeline: BookingTimelineEvent[];
   createdAt: string;
 };

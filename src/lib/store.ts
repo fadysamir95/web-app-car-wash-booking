@@ -13,7 +13,7 @@ const settingsPath = path.join(dataDir, "settings.json");
 const pendingBookingExpiryMs = 3 * 60 * 60 * 1000;
 const pointsPerCompletedWash = 10;
 const pointsForFreeWash = 100;
-const referralRewardEgp = 25;
+const maxCarsPerCustomer = 3;
 
 async function ensureDataFile() {
   await mkdir(dataDir, { recursive: true });
@@ -201,20 +201,27 @@ export async function createBooking(input: BookingInput) {
     }
   }
 
+  const customerCarKeys = new Set(
+    bookings
+      .filter((booking) => booking.phoneNumber === input.phoneNumber && booking.bookingStatus !== "Cancelled")
+      .map(customerCarKey)
+  );
+  const incomingCarKey = customerCarKey(input);
+  if (!customerCarKeys.has(incomingCarKey) && customerCarKeys.size >= maxCarsPerCustomer) {
+    return { ok: false as const, error: "This phone number already has 3 saved cars. Remove an old saved car before adding another one.", field: "carBrand" };
+  }
+
   const appliedPromo = input.promoCode ? activePromoCodes(promoCodes).find((promo) => promo.code === input.promoCode) : null;
   const selectedArea = settings.areas.find((area) => area.id === input.area && area.active);
   const basePrice = selectedArea?.priceEgp ?? settings.servicePriceEgp;
   const promoPrice = finalPriceFromPromo(appliedPromo, basePrice);
-  const referralOwner = input.referredByCode ? bookings.find((booking) => booking.referralCode === input.referredByCode && booking.phoneNumber !== input.phoneNumber) : null;
-  const referralDiscountEgp = referralOwner ? Math.min(referralRewardEgp, promoPrice) : 0;
   const loyaltyBalance = customerLoyaltyBalance(bookings, input.phoneNumber);
   const loyaltyRewardRedeemed = Boolean(input.loyaltyRewardRedeemed && loyaltyBalance >= pointsForFreeWash);
-  const loyaltyDiscountEgp = loyaltyRewardRedeemed ? Math.max(promoPrice - referralDiscountEgp, 0) : 0;
-  const finalPrice = Math.max(promoPrice - referralDiscountEgp - loyaltyDiscountEgp, 0);
+  const loyaltyDiscountEgp = loyaltyRewardRedeemed ? promoPrice : 0;
+  const finalPrice = Math.max(promoPrice - loyaltyDiscountEgp, 0);
   const isFreeBooking = finalPrice === 0;
   const createdAt = new Date();
   const expiresAt = new Date(createdAt.getTime() + pendingBookingExpiryMs);
-  const referralCode = customerReferralCode(input.phoneNumber);
 
   const booking: Booking = {
     id: createBookingReference(),
@@ -224,10 +231,6 @@ export async function createBooking(input: BookingInput) {
     washWindowAcknowledged: true,
     bookingTimeWindow: settings.washWindow,
     finalPriceEgp: finalPrice,
-    referralCode,
-    referredByCode: referralOwner ? input.referredByCode : undefined,
-    referralDiscountEgp: referralDiscountEgp || undefined,
-    referrerRewardEgp: referralOwner ? referralRewardEgp : undefined,
     loyaltyRewardRedeemed,
     loyaltyDiscountEgp: loyaltyDiscountEgp || undefined,
     loyaltyPointsEarned: 0,
@@ -239,7 +242,7 @@ export async function createBooking(input: BookingInput) {
       {
         status: isFreeBooking ? "Confirmed" : "Pending",
         label: isFreeBooking ? "Booking confirmed" : "Booking submitted",
-        note: bookingCreationNote({ isFreeBooking, appliedPromo: Boolean(appliedPromo), referralDiscountEgp, loyaltyRewardRedeemed }),
+        note: bookingCreationNote({ isFreeBooking, appliedPromo: Boolean(appliedPromo), loyaltyRewardRedeemed }),
         createdAt: createdAt.toISOString()
       }
     ],
@@ -250,24 +253,35 @@ export async function createBooking(input: BookingInput) {
   return { ok: true as const, booking };
 }
 
-function customerReferralCode(phoneNumber: string) {
-  return `VYX${phoneNumber.replace(/\D/g, "").slice(-7)}`.toUpperCase();
-}
-
 export function customerLoyaltyBalance(bookings: Booking[], phoneNumber: string) {
   return bookings
     .filter((booking) => booking.phoneNumber === phoneNumber)
     .reduce((total, booking) => {
-      const earned = booking.bookingStatus === "Completed" ? booking.loyaltyPointsEarned ?? pointsPerCompletedWash : 0;
+      const earned = booking.bookingStatus === "Completed" ? loyaltyPointsEarnedForBooking(booking) : 0;
       const redeemed = booking.loyaltyRewardRedeemed ? pointsForFreeWash : 0;
       return total + earned - redeemed;
     }, 0);
 }
 
-function bookingCreationNote(input: { isFreeBooking: boolean; appliedPromo: boolean; referralDiscountEgp: number; loyaltyRewardRedeemed: boolean }) {
+function loyaltyPointsEarnedForBooking(booking: Booking) {
+  return booking.loyaltyPointsEarned && booking.loyaltyPointsEarned > 0 ? booking.loyaltyPointsEarned : pointsPerCompletedWash;
+}
+
+function customerCarKey(car: Pick<Booking, "carBrand" | "carModel" | "carYear" | "carColor" | "plateNumber">) {
+  return [
+    car.carBrand,
+    car.carModel,
+    car.carYear || "",
+    car.carColor,
+    car.plateNumber || ""
+  ]
+    .map((value) => value.trim().toLowerCase().replace(/\s+/g, " "))
+    .join("|");
+}
+
+function bookingCreationNote(input: { isFreeBooking: boolean; appliedPromo: boolean; loyaltyRewardRedeemed: boolean }) {
   const notes = [];
   if (input.appliedPromo) notes.push("Promo code applied.");
-  if (input.referralDiscountEgp > 0) notes.push("Referral reward applied.");
   if (input.loyaltyRewardRedeemed) notes.push("Loyalty reward redeemed.");
   if (notes.length > 0) return notes.join(" ");
   return input.isFreeBooking ? "Free wash promo applied." : "Awaiting payment confirmation.";
@@ -288,7 +302,7 @@ export function activePromoCodes(promos: PromoCode[]) {
 
 export async function updateBookingStatus(
   id: string,
-  updates: Partial<Pick<Booking, "paymentStatus" | "bookingStatus" | "completedByWorkerId" | "cancellationReason">>
+  updates: Partial<Pick<Booking, "paymentStatus" | "bookingStatus" | "completedByWorkerId" | "completedByWorkerName" | "cancellationReason">>
 ) {
   const bookings = await readBookings();
   const booking = bookings.find((item) => item.id === id);
@@ -297,6 +311,10 @@ export async function updateBookingStatus(
   Object.assign(booking, normalizeStatusUpdates(updates));
   if (updates.bookingStatus === "Completed" && updates.completedByWorkerId) {
     booking.completedByWorkerId = updates.completedByWorkerId;
+    booking.completedByWorkerName = updates.completedByWorkerName;
+  }
+  if (updates.bookingStatus === "Completed") {
+    awardCompletedWashPoints(bookings, booking);
   }
   if (updates.bookingStatus === "Cancelled" && updates.cancellationReason) {
     booking.cancellationReason = updates.cancellationReason;
@@ -305,7 +323,7 @@ export async function updateBookingStatus(
     booking.timeline.push({
       status: updates.bookingStatus,
       label: `Status changed to ${updates.bookingStatus}`,
-      note: updates.cancellationReason || (updates.completedByWorkerId ? `Completed by worker ${updates.completedByWorkerId}` : undefined),
+      note: updates.cancellationReason || (updates.completedByWorkerName ? `Completed by worker ${updates.completedByWorkerName}` : updates.completedByWorkerId ? `Completed by worker ${updates.completedByWorkerId}` : undefined),
       createdAt: new Date().toISOString()
     });
   }
@@ -353,7 +371,7 @@ export async function addBookingComplaint(id: string, complaint: CustomerComplai
 
 export async function completeBookingWithProof(
   id: string,
-  proof: { imageName: string; imageDataUrl: string; workerId?: string }
+  proof: { imageName: string; imageDataUrl: string; workerId?: string; workerName?: string }
 ) {
   const bookings = await readBookings();
   const booking = bookings.find((item) => item.id === id);
@@ -365,8 +383,8 @@ export async function completeBookingWithProof(
   booking.washProofImageDataUrl = proof.imageDataUrl;
   booking.washProofUploadedAt = now;
   booking.completedByWorkerId = proof.workerId;
-  booking.loyaltyPointsEarned = booking.loyaltyPointsEarned ?? pointsPerCompletedWash;
-  booking.loyaltyPoints = customerLoyaltyBalance(bookings.filter((item) => item.id !== booking.id), booking.phoneNumber) + booking.loyaltyPointsEarned;
+  booking.completedByWorkerName = proof.workerName;
+  awardCompletedWashPoints(bookings, booking);
   booking.timeline.push({
     status: "Completed",
     label: "Vehicle washed with proof",
@@ -396,10 +414,29 @@ function migrateBookings(bookings: Booking[]) {
       changed = true;
       next.expiresAt = new Date(new Date(next.createdAt).getTime() + pendingBookingExpiryMs).toISOString();
     }
+    if (next.bookingStatus === "Completed" && (!next.loyaltyPointsEarned || next.loyaltyPointsEarned <= 0)) {
+      changed = true;
+      next.loyaltyPointsEarned = pointsPerCompletedWash;
+    }
     return next;
   });
+  for (const booking of migrated) {
+    if (booking.bookingStatus !== "Completed") continue;
+    const currentPoints = customerLoyaltyBalance(migrated.filter((item) => item.createdAt <= booking.createdAt), booking.phoneNumber);
+    if (booking.loyaltyPoints !== currentPoints) {
+      changed = true;
+      booking.loyaltyPoints = currentPoints;
+    }
+  }
   if (changed) void writeBookings(migrated);
   return migrated;
+}
+
+function awardCompletedWashPoints(bookings: Booking[], booking: Booking) {
+  if (!booking.loyaltyPointsEarned || booking.loyaltyPointsEarned <= 0) {
+    booking.loyaltyPointsEarned = pointsPerCompletedWash;
+  }
+  booking.loyaltyPoints = customerLoyaltyBalance(bookings.filter((item) => item.id !== booking.id), booking.phoneNumber) + booking.loyaltyPointsEarned;
 }
 
 function defaultServiceSettings(): ServiceSettings {

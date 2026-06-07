@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedWorkerId, isWorkerAuthenticated } from "@/lib/admin";
 import { completeBookingWithProof } from "@/lib/store";
-import { recordWorkerWash } from "@/lib/workers";
+import { getWorkerById, recordWorkerWash } from "@/lib/workers";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -22,10 +22,12 @@ export async function POST(request: Request, context: RouteContext) {
 
   const { id } = await context.params;
   const workerId = await getAuthenticatedWorkerId();
+  const worker = workerId ? await getWorkerById(workerId) : null;
   const booking = await completeBookingWithProof(id, {
     imageName: body.imageName.slice(0, 120),
     imageDataUrl: body.imageDataUrl,
-    workerId: workerId || undefined
+    workerId: workerId || undefined,
+    workerName: worker?.name
   });
 
   if (!booking) {

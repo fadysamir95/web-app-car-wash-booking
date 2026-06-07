@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isAdminAuthenticated } from "@/lib/admin";
+import { isAdminAuthenticated, verifyAdminPassword } from "@/lib/admin";
 import { deleteAllBookingData, readBookings } from "@/lib/store";
 
 export async function GET() {
@@ -11,9 +11,14 @@ export async function GET() {
   return NextResponse.json({ bookings });
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
   if (!(await isAdminAuthenticated())) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  const body = (await request.json().catch(() => null)) as { currentPassword?: string } | null;
+  if (!body?.currentPassword || !(await verifyAdminPassword(body.currentPassword))) {
+    return NextResponse.json({ error: "Current admin password is required." }, { status: 403 });
   }
 
   const bookings = await deleteAllBookingData();

@@ -7,6 +7,7 @@ import {
   Check,
   Loader2,
   LocateFixed,
+  Trash2,
   Upload
 } from "lucide-react";
 import { DEFAULT_CITY, DEFAULT_GOVERNORATE, DEFAULT_SERVICE, PROMO_CODES, SERVICE_AREAS, SERVICE_CONFIG } from "@/lib/constants";
@@ -34,7 +35,6 @@ type FormState = {
   bookingDate: string;
   notes: string;
   promoCode: string;
-  referredByCode: string;
   loyaltyRewardRedeemed: boolean;
   consent: boolean;
   washWindowAcknowledged: boolean;
@@ -59,7 +59,6 @@ const initialState: FormState = {
   bookingDate: "",
   notes: "",
   promoCode: "",
-  referredByCode: "",
   loyaltyRewardRedeemed: false,
   consent: true,
   washWindowAcknowledged: true,
@@ -181,7 +180,7 @@ export function BookingForm() {
   const basePrice = selectedArea?.priceEgp ?? settings.servicePriceEgp;
   const appliedPromo = promoCodes.find((promo) => promo.code === form.promoCode.trim().toLowerCase());
   const promoDiscount = promoDiscountAmount(appliedPromo, basePrice);
-  const finalPrice = finalPriceFromPromo(appliedPromo, basePrice);
+  const priceAfterPromo = finalPriceFromPromo(appliedPromo, basePrice);
   const plateNumber = [form.plateLetters.trim(), form.plateDigits.trim()].filter(Boolean).join(" - ");
   const washWindow = language === "ar" ? settings.washWindowAr : settings.washWindow;
   const lastBooking = returningBookings[0] || null;
@@ -190,11 +189,12 @@ export function BookingForm() {
   const showAreaPriceWarning = Boolean(selectedArea && previousAreaPrice !== undefined && selectedArea.priceEgp !== previousAreaPrice);
   const previousCars = uniquePreviousCars(returningBookings);
   const loyaltyBalance = returningBookings.reduce((total, booking) => {
-    const earned = booking.bookingStatus === "Completed" ? booking.loyaltyPointsEarned ?? 10 : 0;
+    const earned = booking.bookingStatus === "Completed" ? booking.loyaltyPointsEarned && booking.loyaltyPointsEarned > 0 ? booking.loyaltyPointsEarned : 10 : 0;
     const redeemed = booking.loyaltyRewardRedeemed ? 100 : 0;
     return total + earned - redeemed;
   }, 0);
   const canRedeemLoyalty = loyaltyBalance >= 100;
+  const finalPrice = form.loyaltyRewardRedeemed && canRedeemLoyalty ? 0 : priceAfterPromo;
   const bookingClosedByCutoff = Boolean(form.bookingDate && !isBookingDateAllowed(form.bookingDate, bookingNow));
   const bookingClosed = bookingClosedByCutoff || Boolean(capacity?.fullyBooked);
   const bookingCloseNotice =
@@ -353,7 +353,7 @@ export function BookingForm() {
     }
 
     setOtpToken(payload.token);
-    await lookupReturningBooking();
+    await lookupReturningBooking(payload.token);
     setErrors((current) => {
       const next = { ...current };
       delete next.otp;
@@ -361,15 +361,38 @@ export function BookingForm() {
     });
   }
 
-  async function lookupReturningBooking() {
+  async function lookupReturningBooking(tokenOverride = otpToken) {
     setReturningLookupDone(false);
     try {
-      const response = await fetch(`/api/bookings?query=${encodeURIComponent(form.phoneNumber.trim())}`, { cache: "no-store" });
-      const payload = (await response.json().catch(() => ({}))) as { bookings?: Booking[] };
-      setReturningBookings(payload.bookings || []);
+      const [bookingsResponse, hiddenCarsResponse] = await Promise.all([
+        fetch(`/api/bookings?query=${encodeURIComponent(form.phoneNumber.trim())}`, { cache: "no-store" }),
+        tokenOverride
+          ? fetch(`/api/customer/cars?phoneNumber=${encodeURIComponent(form.phoneNumber.trim())}&otpToken=${encodeURIComponent(tokenOverride)}`, { cache: "no-store" })
+          : Promise.resolve(null)
+      ]);
+      const payload = (await bookingsResponse.json().catch(() => ({}))) as { bookings?: Booking[] };
+      const hiddenPayload = hiddenCarsResponse ? ((await hiddenCarsResponse.json().catch(() => ({}))) as { hiddenCarKeys?: string[] }) : {};
+      const hiddenCarKeys = new Set(hiddenPayload.hiddenCarKeys || []);
+      setReturningBookings((payload.bookings || []).filter((booking) => !hiddenCarKeys.has(previousCarKey(booking))));
     } finally {
       setReturningLookupDone(true);
     }
+  }
+
+  async function removeSavedCar(booking: Booking) {
+    const carLabel = `${booking.carBrand} ${booking.carModel}${booking.plateNumber ? ` - ${booking.plateNumber}` : ""}`;
+    const confirmed = window.confirm(language === "ar" ? `هل تريد حذف ${carLabel} من السيارات المحفوظة؟` : `Remove ${carLabel} from saved cars?`);
+    if (!confirmed) return;
+
+    const carKey = previousCarKey(booking);
+    const response = await fetch("/api/customer/cars", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phoneNumber: form.phoneNumber, otpToken, carKey })
+    });
+    if (!response.ok) return;
+    setReturningBookings((current) => current.filter((item) => previousCarKey(item) !== carKey));
+    if (selectedPreviousCarKey === carKey) setSelectedPreviousCarKey("");
   }
 
   function applyReturningBooking(booking = lastBooking) {
@@ -385,6 +408,8 @@ export function BookingForm() {
       carYear: booking.carYear || current.carYear,
       plateLetters,
       plateDigits,
+      carImageName: booking.carImageName || current.carImageName,
+      carImageDataUrl: booking.carImageDataUrl || current.carImageDataUrl,
       area: booking.area || current.area,
       address: booking.address || current.address,
       buildingNumber: booking.buildingNumber || current.buildingNumber,
@@ -469,8 +494,8 @@ export function BookingForm() {
 
     setSubmitting(false);
     if (!response.ok || !payload.booking) {
-      setErrors(payload.errors || { form: t("genericError") });
-      const serverErrors = payload.errors || {};
+      const serverErrors = translateServerErrors(payload.errors || {}, t);
+      setErrors(Object.keys(serverErrors).length > 0 ? serverErrors : { form: t("genericError") });
       if (serverErrors.customerName || serverErrors.phoneNumber || serverErrors.otp || serverErrors.consent) setStep(0);
       else if (serverErrors.area || serverErrors.buildingNumber || serverErrors.address || serverErrors.carLocation) setStep(1);
       else if (serverErrors.carBrand || serverErrors.carModel || serverErrors.carYear || serverErrors.carColor) setStep(2);
@@ -496,7 +521,7 @@ export function BookingForm() {
   }
 
   return (
-    <form id="booking" onSubmit={submitBooking} className="glass-panel relative rounded-[8px] p-4 sm:p-6" dir={dir}>
+    <form id="booking" onSubmit={submitBooking} className="glass-panel relative w-full rounded-[8px] p-4 sm:p-6" dir={dir}>
       {submitting ? (
         <div className="absolute inset-0 z-20 grid place-items-center rounded-[8px] bg-white/90 p-4 backdrop-blur-sm dark:bg-slate-950/90">
           <BurnoutLoader label={language === "ar" ? "جاري تأكيد طلبك" : "Submitting your booking"} />
@@ -532,32 +557,35 @@ export function BookingForm() {
         {step === 0 ? (
           <>
             <Field label={t("phoneNumber")} error={errors.phoneNumber}>
-              <input
-                name="phoneNumber"
-                className={fieldClass(errors.phoneNumber)}
-                inputMode="tel"
-                placeholder="01XXXXXXXXX"
-                value={form.phoneNumber}
-                onChange={(e) => update("phoneNumber", e.target.value)}
-                required
-              />
-            </Field>
-            <div className="rounded-[8px] border border-slate-200 bg-white/75 p-3 dark:border-slate-700 dark:bg-slate-900/75">
-              <div className="grid gap-2 sm:grid-cols-[auto_1fr_auto] sm:items-end">
-                <button type="button" onClick={sendOtp} disabled={otpSending || !form.phoneNumber.trim()} className="inline-flex h-12 items-center justify-center rounded-[8px] bg-slate-950 px-4 text-sm font-black text-white disabled:opacity-60 dark:bg-white dark:text-slate-950">
-                  {otpSending ? t("sendingOtp") : otpSent ? t("resendOtp") : t("sendOtp")}
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                <input
+                  name="phoneNumber"
+                  className={fieldClass(errors.phoneNumber)}
+                  inputMode="tel"
+                  placeholder="01XXXXXXXXX"
+                  value={form.phoneNumber}
+                  onChange={(e) => update("phoneNumber", e.target.value)}
+                  required
+                />
+                <button type="button" onClick={sendOtp} disabled={otpSending || !form.phoneNumber.trim() || Boolean(otpToken)} className={`inline-flex h-12 items-center justify-center rounded-[8px] px-4 text-sm font-black text-white disabled:opacity-80 ${otpToken ? "bg-emerald-500" : "bg-slate-950 dark:bg-white dark:text-slate-950"}`}>
+                  {otpToken ? t("otpVerified") : otpSending ? t("sendingOtp") : otpSent ? t("resendOtp") : t("sendOtp")}
                 </button>
-                <label>
-                  <span className="label">{t("otpCode")}</span>
-                  <input name="otpCode" className={fieldClass(errors.otp)} inputMode="numeric" value={otpCode} onChange={(event) => { setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6)); setOtpToken(""); }} placeholder="123456" />
-                </label>
+              </div>
+            </Field>
+            {otpSent || otpToken ? (
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                <input name="otpCode" className={fieldClass(errors.otp)} inputMode="numeric" value={otpCode} onChange={(event) => { setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6)); setOtpToken(""); }} placeholder={t("otpCode")} />
                 <button type="button" onClick={verifyOtpCode} disabled={otpVerifying || otpCode.length !== 6 || Boolean(otpToken)} className={`inline-flex h-12 items-center justify-center rounded-[8px] px-4 text-sm font-black text-white disabled:opacity-90 ${otpToken ? "bg-emerald-500" : "bg-sky-600 disabled:bg-slate-400"}`}>
                   {otpVerifying ? t("checking") : otpToken ? t("otpVerified") : t("verifyOtp")}
                 </button>
               </div>
-              {otpDevCode ? <p className="mt-2 text-xs font-black text-sky-700">{t("devOtpCode")}: {otpDevCode}</p> : null}
+            ) : null}
+            {(otpDevCode || errors.otp) ? (
+              <div>
+                {otpDevCode ? <p className="text-xs font-black text-sky-700">{t("devOtpCode")}: {otpDevCode}</p> : null}
               {errors.otp ? <p className="error-text">{errors.otp}</p> : null}
-            </div>
+              </div>
+            ) : null}
             {otpToken && returningLookupDone && lastBooking ? (
               <div className="rounded-[8px] border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/35 dark:text-emerald-100">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -579,21 +607,35 @@ export function BookingForm() {
                       {language === "ar" ? "أو اختر سيارة محفوظة:" : "Or choose a saved car:"}
                     </p>
                     <div className="grid gap-2 sm:grid-cols-2">
-                      {previousCars.map((booking) => (
-                        <button
-                          key={`${booking.carBrand}-${booking.carModel}-${booking.plateNumber || booking.id}`}
-                          type="button"
-                          onClick={() => applyReturningBooking(booking)}
-                          className={`rounded-[8px] p-3 text-start text-xs font-black ring-1 transition ${
-                            selectedPreviousCarKey === previousCarKey(booking)
-                              ? "bg-emerald-600 text-white ring-emerald-700"
-                              : "bg-white text-slate-800 ring-emerald-200 hover:bg-emerald-100 dark:bg-slate-900 dark:text-slate-100 dark:ring-emerald-900"
-                          }`}
-                        >
-                          <span className="block">{booking.carBrand} {booking.carModel} {booking.carYear ? `- ${booking.carYear}` : ""}</span>
-                          <span className={`mt-1 block ${selectedPreviousCarKey === previousCarKey(booking) ? "text-emerald-50" : "text-slate-500 dark:text-slate-300"}`}>{booking.carColor}{booking.plateNumber ? ` - ${booking.plateNumber}` : ""}</span>
-                        </button>
-                      ))}
+                      {previousCars.map((booking) => {
+                        const carKey = previousCarKey(booking);
+                        const selected = selectedPreviousCarKey === carKey;
+                        return (
+                          <div
+                            key={`${booking.carBrand}-${booking.carModel}-${booking.plateNumber || booking.id}`}
+                            className={`rounded-[8px] p-2 text-xs font-black ring-1 transition ${
+                              selected
+                                ? "bg-emerald-600 text-white ring-emerald-700"
+                                : "bg-white text-slate-800 ring-emerald-200 dark:bg-slate-900 dark:text-slate-100 dark:ring-emerald-900"
+                            }`}
+                          >
+                            <button type="button" onClick={() => applyReturningBooking(booking)} className="block w-full rounded-[8px] p-2 text-start hover:bg-emerald-50/70 dark:hover:bg-emerald-950/30">
+                              <span className="block">{booking.carBrand} {booking.carModel} {booking.carYear ? `- ${booking.carYear}` : ""}</span>
+                              <span className={`mt-1 block ${selected ? "text-emerald-50" : "text-slate-500 dark:text-slate-300"}`}>{booking.carColor}{booking.plateNumber ? ` - ${booking.plateNumber}` : ""}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeSavedCar(booking)}
+                              className={`mt-2 inline-flex h-9 w-full items-center justify-center gap-2 rounded-[8px] text-xs font-black ${
+                                selected ? "bg-white/15 text-white hover:bg-white/25" : "bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950/35 dark:text-rose-200"
+                              }`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              {language === "ar" ? "حذف السيارة" : "Remove car"}
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 ) : null}
@@ -713,6 +755,12 @@ export function BookingForm() {
                 <span className="truncate">{form.carImageName || t("choosePhoto")}</span>
                 <input className="sr-only" type="file" accept="image/*" onChange={(e) => captureCarPhoto(e.target.files?.[0] || null)} />
               </label>
+              {form.carImageDataUrl ? (
+                <div className="mt-3 overflow-hidden rounded-[8px] border border-sky-200 bg-white dark:border-sky-900 dark:bg-slate-900">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={form.carImageDataUrl} alt={form.carImageName || "Saved car photo"} className="max-h-56 w-full object-cover" />
+                </div>
+              ) : null}
             </Field>
             <Field label={t("notes")} error={errors.notes}>
               <textarea className="field min-h-28 resize-y" value={form.notes} onChange={(e) => update("notes", e.target.value)} />
@@ -755,19 +803,13 @@ export function BookingForm() {
             </Field>
             <Field label={language === "ar" ? `${t("promoCode")} (اختياري)` : `${t("promoCode")} (optional)`} error={errors.promoCode}>
               <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-                <input name="promoCode" className={fieldClass(errors.promoCode)} value={form.promoCode} onChange={(e) => update("promoCode", e.target.value)} />
+                <input name="promoCode" className={fieldClass(errors.promoCode)} value={form.promoCode} onChange={(e) => update("promoCode", e.target.value)} onBlur={verifyPromoCode} />
                 <button type="button" onClick={verifyPromoCode} className="inline-flex h-12 items-center justify-center rounded-[8px] bg-slate-950 px-4 text-sm font-black text-white dark:bg-white dark:text-slate-950">
                   {language === "ar" ? "تحقق" : "Check"}
                 </button>
               </div>
               {promoChecked && appliedPromo ? <span className="mt-2 block text-xs font-black text-emerald-600">{appliedPromo.label} - {promoDisplayValue(appliedPromo)}</span> : null}
             </Field>
-            {/* <Field label={language === "ar" ? "كود دعوة صديق (اختياري)" : "Referral code (optional)"} error={errors.referredByCode}>
-              <input name="referredByCode" className={fieldClass(errors.referredByCode)} value={form.referredByCode} onChange={(e) => update("referredByCode", e.target.value.toUpperCase())} placeholder="VYX..." />
-              <p className="mt-2 text-xs font-bold text-slate-500 dark:text-slate-300">
-                {language === "ar" ? "لو الكود صحيح، صاحبك يحصل على 25 جنيه وأنت تحصل على خصم 25 جنيه." : "If valid, your friend earns 25 EGP and you get 25 EGP off."}
-              </p>
-            </Field> */}
             <label className={`flex items-start gap-3 rounded-[8px] p-3 text-sm font-bold leading-6 ${canRedeemLoyalty ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/35 dark:text-emerald-100" : "bg-slate-50 text-slate-500 dark:bg-slate-900 dark:text-slate-300"}`}>
               <input type="checkbox" className="mt-1 h-4 w-4 accent-emerald-600" disabled={!canRedeemLoyalty} checked={form.loyaltyRewardRedeemed && canRedeemLoyalty} onChange={(e) => update("loyaltyRewardRedeemed", e.target.checked)} />
               <span>
@@ -870,6 +912,15 @@ function Alert({ children }: { children: React.ReactNode }) {
 
 function fieldClass(error?: string) {
   return `field ${error ? "field-error" : ""}`;
+}
+
+function translateServerErrors(errors: Record<string, string>, t: (key: "requiredOtp") => string) {
+  return Object.fromEntries(
+    Object.entries(errors).map(([key, value]) => [
+      key,
+      value === "Verify your phone number before booking." ? t("requiredOtp") : value
+    ])
+  );
 }
 
 function normalizePlateLetters(value: string) {

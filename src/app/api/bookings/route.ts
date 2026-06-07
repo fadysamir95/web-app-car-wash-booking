@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { activePromoCodes, createBooking, readBookings, readPromoCodes, readSettings } from "@/lib/store";
 import { normalizePhone, validateBookingInput } from "@/lib/validation";
-import { consumeOtpToken } from "@/lib/otp";
+import { consumeOtpToken, verifyOtpToken } from "@/lib/otp";
+import { readWorkers } from "@/lib/workers";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -16,10 +17,17 @@ export async function GET(request: Request) {
   const normalizedReference = query.toUpperCase();
   const bookings = await readBookings();
   const matches = bookings
-    .filter((booking) => booking.id.toUpperCase() === normalizedReference || booking.phoneNumber === normalizedPhone)
-    .slice(0, 10);
+    .filter((booking) => booking.id.toUpperCase() === normalizedReference || booking.phoneNumber === normalizedPhone);
+  const workers = await readWorkers();
+  const enrichedMatches = matches.map((booking) => {
+    const worker = booking.completedByWorkerId ? workers.find((item) => item.id === booking.completedByWorkerId) : null;
+    return {
+      ...booking,
+      completedByWorkerName: booking.completedByWorkerName || worker?.name
+    };
+  });
 
-  return NextResponse.json({ bookings: matches });
+  return NextResponse.json({ bookings: enrichedMatches });
 }
 
 export async function POST(request: Request) {
@@ -39,14 +47,15 @@ export async function POST(request: Request) {
   }
 
   const otpToken = typeof body === "object" && body !== null && "otpToken" in body ? String((body as { otpToken?: unknown }).otpToken || "") : "";
-  if (!(await consumeOtpToken(result.data.phoneNumber, otpToken))) {
+  if (!(await verifyOtpToken(result.data.phoneNumber, otpToken))) {
     return NextResponse.json({ errors: { otp: "Verify your phone number before booking." } }, { status: 400 });
   }
 
   const created = await createBooking(result.data);
   if (!created.ok) {
-    return NextResponse.json({ errors: { bookingDate: created.error } }, { status: 409 });
+    return NextResponse.json({ errors: { [created.field || "bookingDate"]: created.error } }, { status: 409 });
   }
 
+  await consumeOtpToken(result.data.phoneNumber, otpToken);
   return NextResponse.json({ booking: created.booking }, { status: 201 });
 }
