@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, CheckCircle2, Clock, Loader2, MessageCircle, Search, ShieldCheck, Sparkles, Wrench } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clock, Loader2, MapPin, MessageCircle, Search, ShieldCheck, Sparkles, Wrench } from "lucide-react";
 import { BookingForm } from "@/components/booking-form";
 import { AiSupportWidget } from "@/components/ai-support-widget";
 import { BrandLogo } from "@/components/brand-logo";
@@ -42,9 +42,23 @@ export function HomePage() {
 
   const activeAreas = settings.areas.filter((area) => area.active);
   const startingPrice = activeAreas.length > 0 ? Math.min(...activeAreas.map((area) => area.priceEgp)) : settings.servicePriceEgp;
+  const faqs = faqItems(language);
+  const faqSchema = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqs.map((item) => ({
+      "@type": "Question",
+      name: item.question,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: item.answer
+      }
+    }))
+  };
 
   return (
     <main dir={dir}>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }} />
       <section className="relative min-h-[86svh] overflow-hidden">
         <Image
           src="/images/hero-car-wash.png"
@@ -90,7 +104,7 @@ export function HomePage() {
               <Fact icon={<Wrench className="h-4 w-4" />} title={`${activeAreas.length} ${t("supportedAreas")}`} />
             </div>
           </div>
-          <div className="w-full pb-10 lg:flex lg:items-end lg:pb-4">
+          <div className="min-w-0 w-full pb-10 lg:flex lg:items-end lg:pb-4">
             <BookingForm />
           </div>
         </div>
@@ -102,16 +116,64 @@ export function HomePage() {
         </div>
       </section>
 
-      <section className="bg-white px-4 py-8 dark:bg-slate-950 sm:px-6">
+      <section className="bg-white px-4 py-12 dark:bg-slate-950 sm:px-6">
         <div className="mx-auto max-w-6xl">
-          <h2 className="mb-4 text-xl font-black text-slate-950 dark:text-white">{t("supportedAreas")}</h2>
-          <div className="grid gap-4 sm:grid-cols-4">
+          <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr] lg:items-end">
+            <div>
+              <p className="text-sm font-black uppercase tracking-wide text-sky-700">VAYAX Coverage</p>
+              <h2 className="mt-2 text-3xl font-black leading-tight text-slate-950 dark:text-white">
+                {language === "ar" ? "المناطق المتاحة وخدمات VAYAX" : "Available areas and VAYAX service coverage"}
+              </h2>
+              <p className="mt-3 max-w-2xl text-sm font-bold leading-7 text-slate-600 dark:text-slate-300">
+                {language === "ar"
+                  ? "اختر منطقتك واعرف السعر قبل تأكيد الحجز. نفس التجربة السريعة، تتبع واضح، ونقاط مكافآت بعد كل غسلة مكتملة."
+                  : "Choose your area and see the price before confirming. Fast booking, clear tracking, and loyalty points after every completed wash."}
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-2 rounded-[8px] border border-slate-200 bg-slate-50 p-3 text-center dark:border-slate-800 dark:bg-slate-900">
+              <MiniStat label={language === "ar" ? "مناطق" : "Areas"} value={String(activeAreas.length)} />
+              <MiniStat label={language === "ar" ? "يبدأ من" : "From"} value={`${startingPrice} EGP`} />
+              <MiniStat label={language === "ar" ? "الحجز" : "Booking"} value={language === "ar" ? "سريع" : "Fast"} />
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {activeAreas.map((area) => (
-              <div key={area.id} className="rounded-[8px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
-                <p className="text-xs font-black uppercase text-sky-700">{t("area")}</p>
-                <h3 className="mt-2 text-lg font-black text-slate-950 dark:text-white">{language === "ar" ? area.nameAr : area.nameEn}</h3>
-                <p className="mt-1 text-sm font-bold text-slate-500">{area.priceEgp} EGP</p>
-              </div>
+              <article key={area.id} className="group rounded-[8px] border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900 dark:hover:border-sky-800">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[8px] bg-sky-50 text-sky-700 ring-1 ring-sky-100 dark:bg-sky-950/50 dark:text-sky-200 dark:ring-sky-900">
+                    <MapPin className="h-5 w-5" />
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                    {area.priceEgp} EGP
+                  </span>
+                </div>
+                <p className="mt-4 text-xs font-black uppercase text-sky-700">{t("area")}</p>
+                <h3 className="mt-1 text-xl font-black text-slate-950 dark:text-white">{language === "ar" ? area.nameAr : area.nameEn}</h3>
+                <p className="mt-2 text-sm font-bold leading-6 text-slate-500 dark:text-slate-300">
+                  {language === "ar" ? "متاحة للحجز الآن داخل نطاق 6 أكتوبر الجديدة." : "Available now within New October City coverage."}
+                </p>
+              </article>
+            ))}
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-3">
+            {seoLandingSections(language, startingPrice).map((section, index) => (
+              <article key={section.title} className="relative overflow-hidden rounded-[8px] border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-900">
+                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-slate-950 via-sky-500 to-slate-300 rtl:bg-gradient-to-l" />
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-black uppercase text-sky-700">VAYAX</p>
+                  <span className="grid h-9 w-9 place-items-center rounded-[8px] bg-white text-sky-700 shadow-sm dark:bg-slate-950 dark:text-sky-200">
+                    {index === 0 ? <Sparkles className="h-4 w-4" /> : index === 1 ? <ShieldCheck className="h-4 w-4" /> : <Wrench className="h-4 w-4" />}
+                  </span>
+                </div>
+                <h2 className="mt-4 text-xl font-black leading-8 text-slate-950 dark:text-white">{section.title}</h2>
+                <p className="mt-3 text-sm font-bold leading-7 text-slate-600 dark:text-slate-300">{section.copy}</p>
+                <a href="#booking" className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-[8px] bg-slate-950 px-4 text-sm font-black text-white transition hover:bg-sky-700 dark:bg-white dark:text-slate-950 dark:hover:bg-sky-100">
+                  {section.cta}
+                  <ArrowRight className="h-4 w-4 rtl:rotate-180" />
+                </a>
+              </article>
             ))}
           </div>
         </div>
@@ -123,7 +185,7 @@ export function HomePage() {
             <h2 className="mt-2 text-2xl font-black text-slate-950 dark:text-white">{language === "ar" ? "أسئلة شائعة" : "Frequently asked questions"}</h2>
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
-            {faqItems(language).map((item) => (
+            {faqs.map((item) => (
               <details key={item.question} className="group rounded-[8px] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-black text-slate-950 dark:text-white">
                   {item.question}
@@ -144,6 +206,46 @@ export function HomePage() {
       <AiSupportWidget />
     </main>
   );
+}
+
+function seoLandingSections(language: "en" | "ar", startingPrice: number) {
+  if (language === "ar") {
+    return [
+      {
+        title: "غسيل سيارات في 6 أكتوبر الجديدة",
+        copy: `احجز غسيل سيارتك من VAYAX داخل 6 أكتوبر الجديدة بسعر يبدأ من ${startingPrice} جنيه حسب المنطقة، مع تتبع واضح للحجز وتعليمات دفع بعد الإرسال.`,
+        cta: "احجز في 6 أكتوبر الجديدة"
+      },
+      {
+        title: "غسيل سيارات في دجلة بالمز",
+        copy: "VAYAX تخدم دجلة بالمز ضمن المناطق المتاحة، مع حفظ بيانات سيارتك للحجوزات القادمة ونقاط مكافآت بعد كل غسلة مكتملة.",
+        cta: "احجز في دجلة بالمز"
+      },
+      {
+        title: "غسيل سيارات متنقل في الجيزة",
+        copy: "ابدأ بحجز خدمة العناية بسيارتك داخل نطاق الجيزة المتاح حاليًا، مع تجربة موبايل سهلة، تأكيد آمن، وصفحة لمتابعة حالة الحجز.",
+        cta: "احجز غسيل متنقل"
+      }
+    ];
+  }
+
+  return [
+    {
+      title: "Car wash in New October",
+      copy: `Book VAYAX car care in New October City with prices starting from ${startingPrice} EGP depending on the selected area, clear booking tracking, and payment instructions after submission.`,
+      cta: "Book in New October"
+    },
+    {
+      title: "Car wash in Degla Palms",
+      copy: "VAYAX supports Degla Palms as one of the active service areas, with saved car details for repeat bookings and loyalty points after completed washes.",
+      cta: "Book in Degla Palms"
+    },
+    {
+      title: "Mobile car wash in Giza",
+      copy: "Start with a fast mobile-first car care booking experience in the supported Giza service area, including secure phone verification and a dedicated tracking page.",
+      cta: "Book mobile wash"
+    }
+  ];
 }
 
 function faqItems(language: "en" | "ar") {
@@ -216,6 +318,15 @@ function MyBookings() {
         ))}
         {searched && !loading && bookings.length === 0 ? <p className="rounded-[8px] bg-slate-50 p-4 text-sm font-bold text-slate-500 dark:bg-slate-900">{t("noBookingFound")}</p> : null}
       </div>
+    </div>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-[8px] bg-white px-3 py-3 dark:bg-slate-950">
+      <p className="truncate text-[0.68rem] font-black uppercase text-slate-500 dark:text-slate-400">{label}</p>
+      <p className="mt-1 truncate text-lg font-black text-slate-950 dark:text-white">{value}</p>
     </div>
   );
 }

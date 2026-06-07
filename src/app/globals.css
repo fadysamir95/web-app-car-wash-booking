@@ -21,10 +21,12 @@
 
 html {
   scroll-behavior: smooth;
+  overflow-x: hidden;
 }
 
 body {
   margin: 0;
+  overflow-x: hidden;
   background:
     radial-gradient(circle at top left, rgba(21, 155, 255, 0.16), transparent 34rem),
     linear-gradient(180deg, #f7fbff 0%, #ffffff 48%, #eef7ff 100%);
@@ -43,6 +45,7 @@ input,
 textarea,
 select {
   font: inherit;
+  max-width: 100%;
 }
 
 .glass-panel {
@@ -62,6 +65,7 @@ select {
 
 .field {
   width: 100%;
+  min-width: 0;
   border: 1px solid #c7dbea;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.9);
@@ -90,6 +94,11 @@ select {
   background: #ffffff;
 }
 
+input[type="date"].field {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
 ::selection {
   background: rgba(14, 165, 233, 0.24);
 }
@@ -111,6 +120,7 @@ select {
   color: #263f56;
   font-size: 0.9rem;
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 @media (prefers-color-scheme: dark) {

@@ -103,6 +103,7 @@ export function BookingForm() {
     t("carInfo"),
     t("bookingDate")
   ];
+  const currentStepDescription = stepDescription(step, language);
 
   useEffect(() => {
     if (!form.bookingDate) return;
@@ -536,19 +537,19 @@ export function BookingForm() {
   }
 
   return (
-    <form id="booking" onSubmit={submitBooking} className="glass-panel relative w-full rounded-[8px] p-4 sm:p-6" dir={dir}>
+    <form id="booking" onSubmit={submitBooking} className="glass-panel relative w-full min-w-0 overflow-hidden rounded-[8px] p-3 sm:p-6" dir={dir}>
       {submitting ? (
         <div className="absolute inset-0 z-20 grid place-items-center rounded-[8px] bg-white/90 p-4 backdrop-blur-sm dark:bg-slate-950/90">
           <BurnoutLoader label={language === "ar" ? "جاري تأكيد طلبك" : "Submitting your booking"} />
         </div>
       ) : null}
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-6">
         <div className="text-sm font-bold text-sky-700">{t("mobileFirst")}</div>
         <h2 className="mt-2 text-2xl font-black text-slate-950 dark:text-white">{t("bookWash")}</h2>
         <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">{t("serviceScope")}</p>
       </div>
 
-      <div className="mb-6 grid grid-cols-4 gap-2">
+      <div className="mb-4 grid grid-cols-4 gap-2 sm:mb-6">
         {steps.map((item, index) => {
           const locked = index > step + 1;
           return (
@@ -564,6 +565,18 @@ export function BookingForm() {
             </button>
           );
         })}
+      </div>
+      <div className="mb-4 rounded-[8px] border border-slate-200 bg-white/80 p-3 dark:border-slate-800 dark:bg-slate-900/80">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs font-black uppercase text-sky-700">
+            {language === "ar" ? `الخطوة ${step + 1} من ${steps.length}` : `Step ${step + 1} of ${steps.length}`}
+          </p>
+          <span className="rounded-full bg-sky-100 px-2.5 py-1 text-[0.68rem] font-black text-sky-800 dark:bg-sky-950 dark:text-sky-100">
+            {Math.round(((step + 1) / steps.length) * 100)}%
+          </span>
+        </div>
+        <h3 className="mt-1 text-lg font-black text-slate-950 dark:text-white">{steps[step]}</h3>
+        <p className="mt-1 text-xs font-bold leading-5 text-slate-500 dark:text-slate-300">{currentStepDescription}</p>
       </div>
 
       {errors.form ? <Alert>{errors.form}</Alert> : null}
@@ -581,7 +594,7 @@ export function BookingForm() {
         </div>
       ) : null}
 
-      <div className="grid gap-4">
+      <div className="grid min-w-0 gap-3 sm:gap-4">
         {step === 0 ? (
           <>
             <Field label={t("phoneNumber")} error={errors.phoneNumber}>
@@ -616,7 +629,7 @@ export function BookingForm() {
             ) : null}
             <OtpProgress language={language} otpSent={otpSent} otpToken={Boolean(otpToken)} />
             {otpToken && returningLookupDone && lastBooking ? (
-              <div className="rounded-[8px] border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/35 dark:text-emerald-100">
+              <div className="rounded-[8px] border border-emerald-200 bg-emerald-50 p-3 text-sm leading-6 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/35 dark:text-emerald-100 sm:p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="font-black">
@@ -642,13 +655,13 @@ export function BookingForm() {
                         return (
                           <div
                             key={`${booking.carBrand}-${booking.carModel}-${booking.plateNumber || booking.id}`}
-                            className={`rounded-[8px] p-2 text-xs font-black ring-1 transition ${
+                            className={`rounded-[8px] p-1.5 text-xs font-black ring-1 transition sm:p-2 ${
                               selected
                                 ? "bg-emerald-600 text-white ring-emerald-700"
                                 : "bg-white text-slate-800 ring-emerald-200 dark:bg-slate-900 dark:text-slate-100 dark:ring-emerald-900"
                             }`}
                           >
-                            <button type="button" onClick={() => applyReturningBooking(booking)} className="block w-full rounded-[8px] p-2 text-start hover:bg-emerald-50/70 dark:hover:bg-emerald-950/30">
+                            <button type="button" onClick={() => applyReturningBooking(booking)} className="block w-full rounded-[8px] p-1.5 text-start hover:bg-emerald-50/70 dark:hover:bg-emerald-950/30 sm:p-2">
                               <span className="block">{booking.carBrand} {booking.carModel} {booking.carYear ? `- ${booking.carYear}` : ""}</span>
                               <span className={`mt-1 block ${selected ? "text-emerald-50" : "text-slate-500 dark:text-slate-300"}`}>{booking.carColor}{booking.plateNumber ? ` - ${booking.plateNumber}` : ""}</span>
                             </button>
@@ -803,7 +816,7 @@ export function BookingForm() {
             <Field label={`${t("bookingDate")} (${washWindow})`} error={errors.bookingDate}>
               <input name="bookingDate" className={fieldClass(errors.bookingDate)} type="date" min={earliestBookingDate} value={form.bookingDate} onChange={(e) => update("bookingDate", e.target.value)} />
               <p className="mt-2 rounded-[8px] bg-sky-50 p-3 text-xs font-bold leading-5 text-sky-900 dark:bg-sky-950/35 dark:text-sky-100">{bookingCloseNotice}</p>
-              <div className="-mx-1 mt-3 flex gap-2 overflow-x-auto px-1 pb-2 lg:mx-0 lg:grid lg:grid-cols-5 lg:overflow-visible lg:px-0">
+              <div className="mt-3 grid max-w-full grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
                 {upcomingDates.map((date) => {
                   const selected = date === form.bookingDate;
                   const dateClosedByCutoff = !isBookingDateAllowed(date, bookingNow);
@@ -814,12 +827,12 @@ export function BookingForm() {
                       key={date}
                       disabled={full}
                       onClick={() => update("bookingDate", date)}
-                      className={`min-h-24 min-w-36 rounded-[8px] border p-2 text-start text-xs transition lg:min-w-0 ${
+                      className={`min-h-20 min-w-0 rounded-[8px] border p-2 text-start text-[0.68rem] transition sm:min-h-24 sm:text-xs ${
                         selected ? "border-sky-500 bg-sky-50 text-sky-950 dark:bg-sky-950 dark:text-sky-100" : "border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                       } ${full ? "cursor-not-allowed opacity-50" : ""}`}
                     >
-                      <span className="block font-black">{formatDisplayDate(date, language)}</span>
-                      <span className="mt-1 block text-[0.68rem]">{washWindow}</span>
+                      <span className="block break-words font-black leading-4">{formatDisplayDate(date, language)}</span>
+                      <span className="mt-1 block break-words text-[0.62rem] leading-4">{washWindow}</span>
                       {selected ? (
                         <span className="mt-1 block font-bold">
                           {loadingCapacity ? t("checking") : capacity?.reason === "cutoff" || bookingClosedByCutoff ? (language === "ar" ? "مغلق" : "Closed") : capacity?.fullyBooked ? t("fullyBooked") : `${capacity?.remaining ?? "-"} ${t("left")}`}
@@ -839,13 +852,13 @@ export function BookingForm() {
               </div>
               {promoChecked && appliedPromo ? <span className="mt-2 block text-xs font-black text-emerald-600">{appliedPromo.label} - {promoDisplayValue(appliedPromo)}</span> : null}
             </Field>
-            <label className={`flex items-start gap-3 rounded-[8px] p-3 text-sm font-bold leading-6 ${canRedeemLoyalty ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/35 dark:text-emerald-100" : "bg-slate-50 text-slate-500 dark:bg-slate-900 dark:text-slate-300"}`}>
+            <label className={`flex min-w-0 items-start gap-3 rounded-[8px] p-3 text-sm font-bold leading-6 ${canRedeemLoyalty ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/35 dark:text-emerald-100" : "bg-slate-50 text-slate-500 dark:bg-slate-900 dark:text-slate-300"}`}>
               <input type="checkbox" className="mt-1 h-4 w-4 accent-emerald-600" disabled={!canRedeemLoyalty} checked={form.loyaltyRewardRedeemed && canRedeemLoyalty} onChange={(e) => update("loyaltyRewardRedeemed", e.target.checked)} />
-              <span>
+              <span className="min-w-0">
                 {language === "ar" ? `رصيدك ${loyaltyBalance} نقطة. ${canRedeemLoyalty ? "استخدم 100 نقطة للحصول على غسلة مجانية." : "كل غسلة مكتملة = 10 نقاط، و100 نقطة = غسلة مجانية."}` : `You have ${loyaltyBalance} points. ${canRedeemLoyalty ? "Redeem 100 points for a free wash." : "Every completed wash earns 10 points. 100 points = free wash."}`}
               </span>
             </label>
-            <div className="rounded-[8px] border border-sky-200 bg-sky-50 p-4 text-slate-950 dark:border-sky-900 dark:bg-sky-950/35 dark:text-sky-100">
+            <div className="min-w-0 rounded-[8px] border border-sky-200 bg-sky-50 p-3 text-slate-950 dark:border-sky-900 dark:bg-sky-950/35 dark:text-sky-100 sm:p-4">
               <div className="flex items-center justify-between gap-3 text-sm">
                 <span className="font-bold text-slate-600 dark:text-slate-300">{t("servicePrice")}</span>
                 <span className="font-black">{basePrice} EGP</span>
@@ -853,7 +866,7 @@ export function BookingForm() {
               {selectedArea ? (
                 <div className="mt-2 flex items-center justify-between gap-3 text-xs font-bold text-slate-500 dark:text-slate-300">
                   <span>{t("area")}</span>
-                  <span>{language === "ar" ? selectedArea.nameAr : selectedArea.nameEn}</span>
+                  <span className="min-w-0 truncate">{language === "ar" ? selectedArea.nameAr : selectedArea.nameEn}</span>
                 </div>
               ) : null}
               {appliedPromo ? (
@@ -867,7 +880,7 @@ export function BookingForm() {
                 <span className="text-2xl font-black text-sky-700 dark:text-sky-200">{finalPrice} EGP</span>
               </div>
             </div>
-            <div className="rounded-[8px] border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950 dark:border-amber-900 dark:bg-amber-950/35 dark:text-amber-100">
+            <div className="min-w-0 rounded-[8px] border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-950 dark:border-amber-900 dark:bg-amber-950/35 dark:text-amber-100 sm:p-4">
               <p className="font-black">{t("importantNoticeTitle")}</p>
               <p className="mt-2 whitespace-pre-line">{t("preSubmitNotice")}</p>
             </div>
@@ -879,37 +892,38 @@ export function BookingForm() {
           </>
         ) : null}
 
-        <div className="sticky bottom-2 z-10 mt-2 rounded-[8px] border border-slate-200 bg-white/95 p-2 shadow-xl backdrop-blur dark:border-slate-700 dark:bg-slate-950/95 lg:static lg:shadow-sm">
-          <div className="mb-2 grid grid-cols-3 gap-2 rounded-[8px] bg-slate-50 p-2 text-xs dark:bg-slate-900">
-            <div>
+        <div className="sticky bottom-2 z-10 mt-2 min-w-0 rounded-[8px] border border-slate-200 bg-white/95 p-2 shadow-xl backdrop-blur dark:border-slate-700 dark:bg-slate-950/95 lg:static lg:shadow-sm">
+          <div className="mb-2 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] gap-1.5 rounded-[8px] bg-slate-50 p-2 text-[0.62rem] dark:bg-slate-900 sm:gap-2 sm:text-xs">
+            <div className="min-w-0">
               <span className="block font-bold text-slate-500">{t("area")}</span>
               <span className="block truncate font-black text-slate-950 dark:text-white">{selectedArea ? (language === "ar" ? selectedArea.nameAr : selectedArea.nameEn) : "-"}</span>
             </div>
-            <div>
+            <div className="min-w-0">
               <span className="block font-bold text-slate-500">{t("bookingDate")}</span>
               <span className="block truncate font-black text-slate-950 dark:text-white">
                 {step >= 3 && form.bookingDate ? formatDisplayDate(form.bookingDate, language) : "-"}
               </span>
             </div>
-            <div>
+            <div className="min-w-0">
               <span className="block font-bold text-slate-500">{t("finalPrice")}</span>
               <span className="block truncate font-black text-sky-700 dark:text-sky-300">{finalPrice} EGP</span>
             </div>
           </div>
-          <div className="flex gap-3">
+          <div className="flex min-w-0 gap-2 sm:gap-3">
           {step > 0 ? (
-            <button type="button" onClick={goBack} className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-[8px] bg-slate-200 px-4 text-sm font-black text-slate-950 dark:bg-slate-800 dark:text-white">
+            <button type="button" onClick={goBack} className="inline-flex h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[8px] bg-slate-200 px-2 text-xs font-black text-slate-950 dark:bg-slate-800 dark:text-white sm:h-12 sm:gap-2 sm:px-4 sm:text-sm">
               {dir === "rtl" ? <ArrowRight className="h-4 w-4" /> : <ArrowLeft className="h-4 w-4" />}
               {t("back")}
             </button>
           ) : null}
           {step < steps.length - 1 ? (
-            <button type="button" onClick={goNext} className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-[8px] bg-sky-600 px-4 text-sm font-black text-white">
-              {t("next")}
+            <button type="button" onClick={goNext} className="inline-flex h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[8px] bg-sky-600 px-2 text-xs font-black text-white sm:h-12 sm:gap-2 sm:px-4 sm:text-sm">
+              <span className="sm:hidden">{language === "ar" ? "حفظ ومتابعة" : "Save and continue"}</span>
+              <span className="hidden sm:inline">{t("next")}</span>
               {dir === "rtl" ? <ArrowLeft className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
             </button>
           ) : (
-            <button type="submit" disabled={submitting || bookingClosed} className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-[8px] bg-sky-600 px-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-400">
+            <button type="submit" disabled={submitting || bookingClosed} className="inline-flex h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[8px] bg-sky-600 px-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-400 sm:h-12 sm:gap-2 sm:px-4 sm:text-sm">
               {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
               {t("submit")}
             </button>
@@ -923,7 +937,7 @@ export function BookingForm() {
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
-    <label>
+    <label className="block min-w-0 max-w-full">
       <span className="label">{label}</span>
       {children}
       {error ? <span className="error-text">{error}</span> : null}
@@ -941,6 +955,25 @@ function Alert({ children }: { children: React.ReactNode }) {
 
 function fieldClass(error?: string) {
   return `field ${error ? "field-error" : ""}`;
+}
+
+function stepDescription(step: number, language: "en" | "ar") {
+  const descriptions = {
+    en: [
+      "Verify the phone number and confirm customer consent.",
+      "Choose the service area and add the building details.",
+      "Add the vehicle details and optional car photo.",
+      "Choose the booking date, promo code, and review the final price."
+    ],
+    ar: [
+      "تحقق من رقم الهاتف وأكد موافقة العميل.",
+      "اختر المنطقة وأضف بيانات العمارة والموقع عند الحاجة.",
+      "أضف بيانات السيارة وصورة اختيارية إذا كانت متاحة.",
+      "اختر تاريخ الحجز وكود الخصم وراجع السعر النهائي."
+    ]
+  } as const;
+
+  return descriptions[language][step] || descriptions[language][0];
 }
 
 function OtpProgress({ language, otpSent, otpToken }: { language: "en" | "ar"; otpSent: boolean; otpToken: boolean }) {
