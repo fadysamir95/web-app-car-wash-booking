@@ -116,30 +116,28 @@ export function HomePage() {
         </div>
       </section>
 
-      <section className="bg-white px-4 py-12 dark:bg-slate-950 sm:px-6">
+      <section id="coverage" className="bg-white px-4 py-12 dark:bg-slate-950 sm:px-6">
         <div className="mx-auto max-w-6xl">
-          <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr] lg:items-end">
-            <div>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-2xl">
               <p className="text-sm font-black uppercase tracking-wide text-sky-700">VAYAX Coverage</p>
               <h2 className="mt-2 text-3xl font-black leading-tight text-slate-950 dark:text-white">
-                {language === "ar" ? "المناطق المتاحة وخدمات VAYAX" : "Available areas and VAYAX service coverage"}
+                {language === "ar" ? "المناطق المتاحة للحجز" : "Available booking areas"}
               </h2>
-              <p className="mt-3 max-w-2xl text-sm font-bold leading-7 text-slate-600 dark:text-slate-300">
+              <p className="mt-3 text-sm font-bold leading-7 text-slate-600 dark:text-slate-300">
                 {language === "ar"
-                  ? "اختر منطقتك واعرف السعر قبل تأكيد الحجز. نفس التجربة السريعة، تتبع واضح، ونقاط مكافآت بعد كل غسلة مكتملة."
-                  : "Choose your area and see the price before confirming. Fast booking, clear tracking, and loyalty points after every completed wash."}
+                  ? "الخدمة متاحة حاليًا في 6 أكتوبر الجديدة داخل المناطق التالية فقط. اختر منطقتك من نموذج الحجز قبل تأكيد الطلب."
+                  : "VAYAX is currently available in New October City only within the areas below. Choose your area in the booking form before confirming."}
               </p>
             </div>
-            <div className="grid grid-cols-3 gap-2 rounded-[8px] border border-slate-200 bg-slate-50 p-3 text-center dark:border-slate-800 dark:bg-slate-900">
-              <MiniStat label={language === "ar" ? "مناطق" : "Areas"} value={String(activeAreas.length)} />
-              <MiniStat label={language === "ar" ? "يبدأ من" : "From"} value={`${startingPrice} EGP`} />
-              <MiniStat label={language === "ar" ? "الحجز" : "Booking"} value={language === "ar" ? "سريع" : "Fast"} />
+            <div className="rounded-[8px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
+              {language === "ar" ? `${activeAreas.length} مناطق متاحة` : `${activeAreas.length} available areas`}
             </div>
           </div>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {activeAreas.map((area) => (
-              <article key={area.id} className="group rounded-[8px] border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900 dark:hover:border-sky-800">
+              <article key={area.id} className="group rounded-[8px] border border-slate-200 bg-slate-50 p-4 shadow-sm transition hover:border-sky-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-sky-800">
                 <div className="flex items-start justify-between gap-3">
                   <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[8px] bg-sky-50 text-sky-700 ring-1 ring-sky-100 dark:bg-sky-950/50 dark:text-sky-200 dark:ring-sky-900">
                     <MapPin className="h-5 w-5" />
@@ -151,30 +149,60 @@ export function HomePage() {
                 <p className="mt-4 text-xs font-black uppercase text-sky-700">{t("area")}</p>
                 <h3 className="mt-1 text-xl font-black text-slate-950 dark:text-white">{language === "ar" ? area.nameAr : area.nameEn}</h3>
                 <p className="mt-2 text-sm font-bold leading-6 text-slate-500 dark:text-slate-300">
-                  {language === "ar" ? "متاحة للحجز الآن داخل نطاق 6 أكتوبر الجديدة." : "Available now within New October City coverage."}
+                  {language === "ar" ? "متاحة للحجز الآن داخل نطاق 6 أكتوبر الجديدة." : "Available now inside New October City."}
                 </p>
               </article>
             ))}
           </div>
+        </div>
+      </section>
 
-          <div className="mt-5 grid gap-4 md:grid-cols-3">
-            {seoLandingSections(language, startingPrice).map((section, index) => (
-              <article key={section.title} className="relative overflow-hidden rounded-[8px] border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-900">
-                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-slate-950 via-sky-500 to-slate-300 rtl:bg-gradient-to-l" />
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs font-black uppercase text-sky-700">VAYAX</p>
-                  <span className="grid h-9 w-9 place-items-center rounded-[8px] bg-white text-sky-700 shadow-sm dark:bg-slate-950 dark:text-sky-200">
-                    {index === 0 ? <Sparkles className="h-4 w-4" /> : index === 1 ? <ShieldCheck className="h-4 w-4" /> : <Wrench className="h-4 w-4" />}
-                  </span>
-                </div>
-                <h2 className="mt-4 text-xl font-black leading-8 text-slate-950 dark:text-white">{section.title}</h2>
-                <p className="mt-3 text-sm font-bold leading-7 text-slate-600 dark:text-slate-300">{section.copy}</p>
-                <a href="#booking" className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-[8px] bg-slate-950 px-4 text-sm font-black text-white transition hover:bg-sky-700 dark:bg-white dark:text-slate-950 dark:hover:bg-sky-100">
-                  {section.cta}
-                  <ArrowRight className="h-4 w-4 rtl:rotate-180" />
+      <section className="bg-slate-950 px-4 py-12 text-white sm:px-6">
+        <div className="mx-auto max-w-6xl">
+          <div className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
+            <div>
+              <p className="text-sm font-black uppercase tracking-wide text-sky-300">VAYAX Experience</p>
+              <h2 className="mt-2 text-3xl font-black leading-tight">
+                {language === "ar" ? "حجز واضح من أول خطوة لحد متابعة الحالة" : "A clearer booking experience from start to tracking"}
+              </h2>
+              <p className="mt-3 text-sm font-bold leading-7 text-slate-300">
+                {language === "ar"
+                  ? "قسمنا التجربة علشان العميل يحجز بسرعة، يعرف السعر، ويتابع حالة الحجز من غير لخبطة."
+                  : "The flow is designed so customers book quickly, see the price clearly, and track their booking without confusion."}
+              </p>
+              <a href="#booking" className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-[8px] bg-sky-500 px-4 text-sm font-black text-white transition hover:bg-sky-400">
+                {t("cta")}
+                <ArrowRight className="h-4 w-4 rtl:rotate-180" />
+              </a>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              {experienceSteps(language).map((item, index) => (
+                <article key={item.title} className="rounded-[8px] border border-white/10 bg-white/[0.06] p-4 shadow-2xl shadow-black/10">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="grid h-10 w-10 place-items-center rounded-[8px] bg-white text-sky-700">
+                      {index === 0 ? <Sparkles className="h-5 w-5" /> : index === 1 ? <ShieldCheck className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
+                    </span>
+                    <span className="text-xs font-black text-sky-300">0{index + 1}</span>
+                  </div>
+                  <h3 className="mt-4 text-lg font-black">{item.title}</h3>
+                  <p className="mt-2 text-sm font-bold leading-6 text-slate-300">{item.copy}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+          <div className="mt-6 rounded-[8px] border border-white/10 bg-white/[0.04] p-4">
+            <p className="text-xs font-black uppercase tracking-wide text-sky-300">VAYAX Search</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {seoLandingSections(language, startingPrice).map((section) => (
+                <a
+                  key={section.title}
+                  className="rounded-full bg-white/10 px-3 py-2 text-xs font-black text-slate-100 ring-1 ring-white/10 transition hover:bg-sky-500 hover:text-white"
+                  title={section.copy}
+                >
+                  {section.title}
                 </a>
-              </article>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -197,6 +225,7 @@ export function HomePage() {
           </div>
         </div>
       </section>
+      <Footer language={language} activeAreas={activeAreas} />
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur lg:hidden dark:border-slate-800 dark:bg-slate-950/95">
         <a href="#booking" className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[8px] bg-sky-600 text-sm font-black text-white">
           {t("cta")}
@@ -245,6 +274,22 @@ function seoLandingSections(language: "en" | "ar", startingPrice: number) {
       copy: "Start with a fast mobile-first car care booking experience in the supported Giza service area, including secure phone verification and a dedicated tracking page.",
       cta: "Book mobile wash"
     }
+  ];
+}
+
+function experienceSteps(language: "en" | "ar") {
+  if (language === "ar") {
+    return [
+      { title: "تحقق سريع", copy: "ابدأ برقم الهاتف وكود التحقق لتقليل الحجوزات الوهمية وحفظ بياناتك بأمان." },
+      { title: "سعر واضح", copy: "اختر المنطقة والتاريخ وشاهد السعر النهائي قبل إرسال طلب الحجز." },
+      { title: "متابعة سهلة", copy: "بعد الحجز يمكنك متابعة الحالة وإرسال صورة التحويل من صفحة حجوزاتي." }
+    ];
+  }
+
+  return [
+    { title: "Fast verification", copy: "Start with phone OTP to reduce fake bookings and keep repeat details ready." },
+    { title: "Clear price", copy: "Choose area and date, then review the final price before submitting." },
+    { title: "Easy tracking", copy: "After booking, track status and send payment proof from My Bookings." }
   ];
 }
 
@@ -318,15 +363,6 @@ function MyBookings() {
         ))}
         {searched && !loading && bookings.length === 0 ? <p className="rounded-[8px] bg-slate-50 p-4 text-sm font-bold text-slate-500 dark:bg-slate-900">{t("noBookingFound")}</p> : null}
       </div>
-    </div>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0 rounded-[8px] bg-white px-3 py-3 dark:bg-slate-950">
-      <p className="truncate text-[0.68rem] font-black uppercase text-slate-500 dark:text-slate-400">{label}</p>
-      <p className="mt-1 truncate text-lg font-black text-slate-950 dark:text-white">{value}</p>
     </div>
   );
 }
@@ -431,5 +467,58 @@ function Fact({ icon, title }: { icon: ReactNode; title: string }) {
       {icon}
       <span className="font-bold">{title}</span>
     </div>
+  );
+}
+
+function Footer({
+  language,
+  activeAreas
+}: {
+  language: "en" | "ar";
+  activeAreas: ServiceSettings["areas"];
+}) {
+  return (
+    <footer className="bg-slate-950 px-4 pb-24 pt-10 text-white lg:pb-10 sm:px-6">
+      <div className="mx-auto max-w-6xl">
+        <div className="grid gap-8 rounded-[8px] border border-white/10 bg-white/[0.04] p-5 md:grid-cols-[1.2fr_0.8fr_0.8fr]">
+          <div>
+            <div className="inline-flex rounded-[8px] bg-white p-2 shadow-lg shadow-black/20 ring-1 ring-white/15">
+              <BrandLogo compact size="lg" />
+            </div>
+            <p className="mt-4 max-w-md text-sm font-bold leading-7 text-slate-300">
+              {language === "ar"
+                ? "VAYAX لخدمات العناية بالسيارات. حجز سريع، متابعة واضحة، وتجربة مصممة للموبايل."
+                : "VAYAX car care services. Fast booking, clear tracking, and a mobile-first customer experience."}
+            </p>
+            <p className="mt-3 text-xs font-black uppercase tracking-[0.2em] text-sky-300">your car, our care</p>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-black text-white">{language === "ar" ? "روابط سريعة" : "Quick links"}</h3>
+            <div className="mt-4 grid gap-3 text-sm font-bold text-slate-300">
+              <a href="#booking" className="transition hover:text-sky-300">{language === "ar" ? "احجز الآن" : "Book now"}</a>
+              <Link href="/my-booking" className="transition hover:text-sky-300">{language === "ar" ? "حجوزاتي" : "My Bookings"}</Link>
+              <a href="#coverage" className="transition hover:text-sky-300">{language === "ar" ? "المناطق المتاحة" : "Available areas"}</a>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-black text-white">{language === "ar" ? "المناطق الحالية" : "Current areas"}</h3>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {activeAreas.map((area) => (
+                <span key={area.id} className="rounded-full bg-white/10 px-3 py-1 text-xs font-black text-slate-200 ring-1 ring-white/10">
+                  {language === "ar" ? area.nameAr : area.nameEn}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-col gap-3 text-xs font-bold text-slate-400 sm:flex-row sm:items-center sm:justify-between">
+          <p>© {new Date().getFullYear()} VAYAX. {language === "ar" ? "كل الحقوق محفوظة." : "All rights reserved."}</p>
+          <p>{language === "ar" ? "متاح حاليًا في 6 أكتوبر الجديدة، الجيزة." : "Currently available in New October City, Giza."}</p>
+        </div>
+      </div>
+    </footer>
   );
 }
