@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
-import { changeAdminPassword, isAdminAuthenticated } from "@/lib/admin";
+import { changeAdminPassword, isAdminAuthenticated, verifyAdminCsrf } from "@/lib/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function PATCH(request: Request) {
   if (!(await isAdminAuthenticated())) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+  if (!(await verifyAdminCsrf(request))) {
+    return NextResponse.json({ error: "Invalid CSRF token." }, { status: 403 });
   }
 
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";

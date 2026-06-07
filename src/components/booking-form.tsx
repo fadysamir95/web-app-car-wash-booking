@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -94,6 +94,8 @@ export function BookingForm() {
   const [returningLookupDone, setReturningLookupDone] = useState(false);
   const [selectedPreviousCarKey, setSelectedPreviousCarKey] = useState("");
   const [bookingClock, setBookingClock] = useState(0);
+  const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false);
+  const confirmSubmitRef = useRef<HTMLDivElement>(null);
 
   const steps = [
     t("customerInfo"),
@@ -324,11 +326,11 @@ export function BookingForm() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ phoneNumber: form.phoneNumber })
     });
-    const payload = (await response.json().catch(() => ({}))) as { devCode?: string };
+    const payload = (await response.json().catch(() => ({}))) as { devCode?: string; error?: string };
     setOtpSending(false);
 
     if (!response.ok) {
-      setErrors((current) => ({ ...current, otp: t("genericError") }));
+      setErrors((current) => ({ ...current, otp: otpApiErrorMessage(payload.error, t) }));
       return;
     }
 
@@ -343,12 +345,12 @@ export function BookingForm() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ phoneNumber: form.phoneNumber, code: otpCode })
     });
-    const payload = (await response.json().catch(() => ({}))) as { token?: string };
+    const payload = (await response.json().catch(() => ({}))) as { token?: string; error?: string };
     setOtpVerifying(false);
 
     if (!response.ok || !payload.token) {
       setOtpToken("");
-      setErrors((current) => ({ ...current, otp: t("invalidOtp") }));
+      setErrors((current) => ({ ...current, otp: otpApiErrorMessage(payload.error, t, "invalidOtp") }));
       return;
     }
 
@@ -482,6 +484,19 @@ export function BookingForm() {
   async function submitBooking(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!validateAllSteps()) return;
+    setConfirmSubmitOpen(true);
+  }
+
+  useEffect(() => {
+    if (!confirmSubmitOpen) return;
+    window.setTimeout(() => {
+      const top = (confirmSubmitRef.current?.getBoundingClientRect().top || 0) + window.scrollY - 24;
+      window.scrollTo({ top: Math.max(top, 0), behavior: "smooth" });
+    }, 50);
+  }, [confirmSubmitOpen]);
+
+  async function submitConfirmedBooking() {
+    setConfirmSubmitOpen(false);
     setSubmitting(true);
     setErrors({});
 
@@ -552,6 +567,19 @@ export function BookingForm() {
       </div>
 
       {errors.form ? <Alert>{errors.form}</Alert> : null}
+      {confirmSubmitOpen ? (
+        <div ref={confirmSubmitRef}>
+          <ConfirmSubmitModal
+            language={language}
+            customerName={form.customerName}
+            bookingDate={form.bookingDate ? formatDisplayDate(form.bookingDate, language) : "-"}
+            area={selectedArea ? (language === "ar" ? selectedArea.nameAr : selectedArea.nameEn) : "-"}
+            finalPrice={finalPrice}
+            onCancel={() => setConfirmSubmitOpen(false)}
+            onConfirm={submitConfirmedBooking}
+          />
+        </div>
+      ) : null}
 
       <div className="grid gap-4">
         {step === 0 ? (
@@ -586,6 +614,7 @@ export function BookingForm() {
               {errors.otp ? <p className="error-text">{errors.otp}</p> : null}
               </div>
             ) : null}
+            <OtpProgress language={language} otpSent={otpSent} otpToken={Boolean(otpToken)} />
             {otpToken && returningLookupDone && lastBooking ? (
               <div className="rounded-[8px] border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/35 dark:text-emerald-100">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -772,7 +801,7 @@ export function BookingForm() {
         {step === 3 ? (
           <>
             <Field label={`${t("bookingDate")} (${washWindow})`} error={errors.bookingDate}>
-              <input name="bookingDate" className={fieldClass(errors.bookingDate)} type="date" min={earliestBookingDate} value={form.bookingDate} onChange={(e) => update("bookingDate", e.target.value)} required />
+              <input name="bookingDate" className={fieldClass(errors.bookingDate)} type="date" min={earliestBookingDate} value={form.bookingDate} onChange={(e) => update("bookingDate", e.target.value)} />
               <p className="mt-2 rounded-[8px] bg-sky-50 p-3 text-xs font-bold leading-5 text-sky-900 dark:bg-sky-950/35 dark:text-sky-100">{bookingCloseNotice}</p>
               <div className="-mx-1 mt-3 flex gap-2 overflow-x-auto px-1 pb-2 lg:mx-0 lg:grid lg:grid-cols-5 lg:overflow-visible lg:px-0">
                 {upcomingDates.map((date) => {
@@ -830,7 +859,7 @@ export function BookingForm() {
               {appliedPromo ? (
                 <div className="mt-2 flex items-center justify-between gap-3 text-sm">
                   <span className="font-bold text-emerald-700 dark:text-emerald-300">{t("promoDiscount")}</span>
-                  <span className="font-black text-emerald-700 dark:text-emerald-300">-{promoDisplayValue(appliedPromo)} ({promoDiscount} EGP)</span>
+                  <span className="font-black text-emerald-700 dark:text-emerald-300">-{promoDiscount} EGP</span>
                 </div>
               ) : null}
               <div className="mt-3 flex items-center justify-between gap-3 border-t border-sky-200 pt-3 dark:border-sky-900">
@@ -914,13 +943,103 @@ function fieldClass(error?: string) {
   return `field ${error ? "field-error" : ""}`;
 }
 
-function translateServerErrors(errors: Record<string, string>, t: (key: "requiredOtp") => string) {
+function OtpProgress({ language, otpSent, otpToken }: { language: "en" | "ar"; otpSent: boolean; otpToken: boolean }) {
+  const items = [
+    { done: true, label: language === "ar" ? "رقم الهاتف" : "Phone" },
+    { done: otpSent || otpToken, label: language === "ar" ? "إرسال الكود" : "Code sent" },
+    { done: otpToken, label: language === "ar" ? "تم التحقق" : "Verified" }
+  ];
+
+  return (
+    <div className="grid grid-cols-3 gap-2 rounded-[8px] bg-slate-50 p-2 dark:bg-slate-900">
+      {items.map((item) => (
+        <div key={item.label} className="min-w-0">
+          <div className={`h-1.5 rounded-full ${item.done ? "bg-emerald-500" : "bg-slate-200 dark:bg-slate-700"}`} />
+          <p className={`mt-1 truncate text-[0.68rem] font-black ${item.done ? "text-emerald-700 dark:text-emerald-300" : "text-slate-400"}`}>{item.label}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ConfirmSubmitModal({
+  language,
+  customerName,
+  bookingDate,
+  area,
+  finalPrice,
+  onCancel,
+  onConfirm
+}: {
+  language: "en" | "ar";
+  customerName: string;
+  bookingDate: string;
+  area: string;
+  finalPrice: number;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/65 p-4 backdrop-blur-sm" onClick={onCancel}>
+      <section className="w-full max-w-md rounded-[8px] bg-white p-5 text-slate-950 shadow-2xl dark:bg-slate-900 dark:text-white" onClick={(event) => event.stopPropagation()}>
+        <h2 className="text-xl font-black">{language === "ar" ? "تأكيد بيانات الحجز" : "Confirm booking details"}</h2>
+        <p className="mt-2 text-sm font-bold leading-6 text-slate-600 dark:text-slate-300">
+          {language === "ar" ? "راجع البيانات قبل إرسال طلب الحجز." : "Review the details before submitting your booking request."}
+        </p>
+        <div className="mt-4 grid gap-2 text-sm">
+          <ConfirmRow label={language === "ar" ? "الاسم" : "Name"} value={customerName || "-"} />
+          <ConfirmRow label={language === "ar" ? "التاريخ" : "Date"} value={bookingDate} />
+          <ConfirmRow label={language === "ar" ? "المنطقة" : "Area"} value={area} />
+          <ConfirmRow label={language === "ar" ? "السعر النهائي" : "Final price"} value={`${finalPrice} EGP`} />
+        </div>
+        <div className="mt-5 grid gap-2 sm:grid-cols-2">
+          <button type="button" onClick={onCancel} className="inline-flex h-11 items-center justify-center rounded-[8px] bg-slate-100 px-4 text-sm font-black text-slate-800 dark:bg-slate-800 dark:text-slate-100">
+            {language === "ar" ? "رجوع" : "Back"}
+          </button>
+          <button type="button" onClick={onConfirm} className="inline-flex h-11 items-center justify-center rounded-[8px] bg-sky-600 px-4 text-sm font-black text-white">
+            {language === "ar" ? "تأكيد وإرسال" : "Confirm and submit"}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ConfirmRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-[8px] bg-slate-50 px-3 py-2 dark:bg-slate-800">
+      <span className="font-bold text-slate-500 dark:text-slate-300">{label}</span>
+      <span className="text-end font-black">{value}</span>
+    </div>
+  );
+}
+
+function translateServerErrors(errors: Record<string, string>, t: (key: "requiredOtp" | "duplicatePlateBooking" | "tooManyBookingsFromPhone" | "tooManySavedCars") => string) {
   return Object.fromEntries(
     Object.entries(errors).map(([key, value]) => [
       key,
-      value === "Verify your phone number before booking." ? t("requiredOtp") : value
+      value === "Verify your phone number before booking."
+        ? t("requiredOtp")
+        : value === "This plate number already has a booking for this date."
+          ? t("duplicatePlateBooking")
+          : value === "Too many bookings from this phone number. Please try again later."
+            ? t("tooManyBookingsFromPhone")
+            : value === "This phone number already has 3 saved cars. Remove an old saved car before adding another one."
+              ? t("tooManySavedCars")
+              : value
     ])
   );
+}
+
+function otpApiErrorMessage(
+  error: string | undefined,
+  t: (key: "genericError" | "invalidOtp" | "requiredPhone" | "tooManyOtpRequests" | "tooManyOtpAttempts") => string,
+  fallback: "genericError" | "invalidOtp" = "genericError"
+) {
+  if (error === "Too many OTP requests.") return t("tooManyOtpRequests");
+  if (error === "Too many OTP attempts.") return t("tooManyOtpAttempts");
+  if (error === "Invalid phone number.") return t("requiredPhone");
+  return t(fallback);
 }
 
 function normalizePlateLetters(value: string) {

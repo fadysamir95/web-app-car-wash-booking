@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isAdminAuthenticated } from "@/lib/admin";
+import { isAdminAuthenticated, verifyAdminCsrf } from "@/lib/admin";
 import { deletePromoCode, updatePromoCode } from "@/lib/store";
 import type { PromoCode } from "@/lib/types";
 
@@ -29,6 +29,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ co
   if (!(await isAdminAuthenticated())) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
+  if (!(await verifyAdminCsrf(request))) {
+    return NextResponse.json({ error: "Invalid CSRF token." }, { status: 403 });
+  }
 
   const { code } = await params;
   const normalizedCode = code.trim().toLowerCase();
@@ -50,9 +53,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ co
   return NextResponse.json({ promos });
 }
 
-export async function DELETE(_request: Request, { params }: { params: Promise<{ code: string }> }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ code: string }> }) {
   if (!(await isAdminAuthenticated())) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+  if (!(await verifyAdminCsrf(request))) {
+    return NextResponse.json({ error: "Invalid CSRF token." }, { status: 403 });
   }
 
   const { code } = await params;

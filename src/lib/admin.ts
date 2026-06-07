@@ -70,6 +70,26 @@ export async function isAdminAuthenticated() {
   return isValidAdminToken(jar.get(ADMIN_SESSION_COOKIE)?.value);
 }
 
+export async function getAdminSessionToken() {
+  const jar = await cookies();
+  const token = jar.get(ADMIN_SESSION_COOKIE)?.value;
+  return isValidAdminToken(token) ? token : null;
+}
+
+export function createAdminCsrfToken(sessionToken: string) {
+  return createHmac("sha256", getRequiredEnv("ADMIN_SESSION_SECRET")).update(`csrf:${sessionToken}`).digest("hex");
+}
+
+export async function verifyAdminCsrf(request: Request) {
+  const sessionToken = await getAdminSessionToken();
+  const csrfToken = request.headers.get("x-csrf-token") || "";
+  if (!sessionToken || !csrfToken) return false;
+  const expected = createAdminCsrfToken(sessionToken);
+  const left = Buffer.from(csrfToken);
+  const right = Buffer.from(expected);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
 export async function isWorkerAuthenticated() {
   const jar = await cookies();
   return isValidWorkerToken(jar.get(WORKER_SESSION_COOKIE)?.value);

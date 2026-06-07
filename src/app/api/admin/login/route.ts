@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ADMIN_SESSION_COOKIE } from "@/lib/constants";
-import { ADMIN_IDLE_TIMEOUT_SECONDS, createAdminToken, verifyAdminPassword } from "@/lib/admin";
+import { ADMIN_IDLE_TIMEOUT_SECONDS, createAdminCsrfToken, createAdminToken, verifyAdminPassword } from "@/lib/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
@@ -16,8 +16,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid password." }, { status: 401 });
   }
 
-  const response = NextResponse.json({ ok: true });
-  response.cookies.set(ADMIN_SESSION_COOKIE, createAdminToken(), {
+  const sessionToken = createAdminToken();
+  const response = NextResponse.json({ ok: true, csrfToken: createAdminCsrfToken(sessionToken) });
+  response.cookies.set(ADMIN_SESSION_COOKIE, sessionToken, {
     httpOnly: true,
     sameSite: "strict",
     secure: process.env.NODE_ENV === "production",

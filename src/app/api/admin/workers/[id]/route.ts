@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isAdminAuthenticated } from "@/lib/admin";
+import { isAdminAuthenticated, verifyAdminCsrf } from "@/lib/admin";
 import { deleteWorker, updateWorker } from "@/lib/workers";
 
 type RouteContext = {
@@ -9,6 +9,9 @@ type RouteContext = {
 export async function PATCH(request: Request, context: RouteContext) {
   if (!(await isAdminAuthenticated())) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+  if (!(await verifyAdminCsrf(request))) {
+    return NextResponse.json({ error: "Invalid CSRF token." }, { status: 403 });
   }
 
   const { id } = await context.params;
@@ -23,9 +26,12 @@ export async function PATCH(request: Request, context: RouteContext) {
   return NextResponse.json({ worker });
 }
 
-export async function DELETE(_request: Request, context: RouteContext) {
+export async function DELETE(request: Request, context: RouteContext) {
   if (!(await isAdminAuthenticated())) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+  if (!(await verifyAdminCsrf(request))) {
+    return NextResponse.json({ error: "Invalid CSRF token." }, { status: 403 });
   }
 
   const { id } = await context.params;

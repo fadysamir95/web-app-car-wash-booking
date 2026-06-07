@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid phone number." }, { status: 400 });
   }
 
-  const rate = checkRateLimit(`otp:${ip}:${phoneNumber}`, 3, 15 * 60 * 1000);
+  const rate = checkRateLimit(`otp:${ip}:${phoneNumber}`, 5, 15 * 60 * 1000);
   if (!rate.ok) {
     return NextResponse.json({ error: "Too many OTP requests." }, { status: 429 });
   }

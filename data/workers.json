@@ -6,10 +6,10 @@
     "areas": [
       "ebni-betak"
     ],
-    "completedWashes": 2,
+    "completedWashes": 3,
     "createdAt": "2026-06-06T08:05:55.122Z",
     "passwordPreview": "ramez",
-    "lastActivityAt": "2026-06-07T13:03:17.209Z"
+    "lastActivityAt": "2026-06-07T19:18:17.031Z"
   },
   {
     "id": "worker_aa49fa",
@@ -18,13 +18,13 @@
     "areas": [
       "sakan-misr"
     ],
-    "completedWashes": 2,
+    "completedWashes": 3,
     "createdAt": "2026-06-06T08:04:45.801Z",
     "passwordPreview": "fady",
-    "lastActivityAt": "2026-06-07T13:11:41.782Z",
+    "lastActivityAt": "2026-06-07T20:27:12.950Z",
     "currentLat": 29.890121,
     "currentLng": 30.9145412319266,
-    "currentLocationUpdatedAt": "2026-06-07T13:11:41.782Z"
+    "currentLocationUpdatedAt": "2026-06-07T20:09:58.643Z"
   },
   {
     "id": "worker_490da3",
@@ -33,10 +33,10 @@
     "areas": [
       "800-feddan"
     ],
-    "completedWashes": 1,
+    "completedWashes": 2,
     "createdAt": "2026-06-06T01:16:02.087Z",
     "passwordPreview": "adel",
-    "lastActivityAt": "2026-06-07T10:20:30.330Z"
+    "lastActivityAt": "2026-06-07T20:06:59.728Z"
   },
   {
     "id": "worker_7adc3b",
@@ -45,12 +45,12 @@
     "areas": [
       "degla-palms"
     ],
-    "completedWashes": 10,
+    "completedWashes": 21,
     "createdAt": "2026-06-06T01:15:39.966Z",
     "passwordPreview": "fathi",
-    "lastActivityAt": "2026-06-07T13:11:38.965Z",
+    "lastActivityAt": "2026-06-07T20:32:57.823Z",
     "currentLat": 29.890121,
     "currentLng": 30.9145412319266,
-    "currentLocationUpdatedAt": "2026-06-07T12:43:13.202Z"
+    "currentLocationUpdatedAt": "2026-06-07T20:28:05.336Z"
   }
 ]

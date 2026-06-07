@@ -79,6 +79,7 @@ export function AdminDashboard({
   const [adminPasswordForm, setAdminPasswordForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
   const [bookingsPage, setBookingsPage] = useState(1);
   const [customersPage, setCustomersPage] = useState(1);
+  const [csrfToken, setCsrfToken] = useState("");
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">("unsupported");
   const knownBookingIds = useRef(new Set(initialBookings.map((booking) => booking.id)));
   const notificationRef = useRef<HTMLDivElement | null>(null);
@@ -210,9 +211,26 @@ export function AdminDashboard({
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   }, [dailyCounts, settings.maxBookingsPerDay]);
 
+  const adminFetch = useCallback(
+    async (input: RequestInfo | URL, init: RequestInit = {}) => {
+      let token = csrfToken;
+      if (!token) {
+        const response = await fetch("/api/admin/session", { method: "POST" }).catch(() => null);
+        const payload = response?.ok ? ((await response.json().catch(() => ({}))) as { csrfToken?: string }) : {};
+        token = payload.csrfToken || "";
+        if (token) setCsrfToken(token);
+      }
+
+      const headers = new Headers(init.headers);
+      if (token) headers.set("x-csrf-token", token);
+      return fetch(input, { ...init, headers });
+    },
+    [csrfToken]
+  );
+
   async function updateBooking(id: string, updates: Partial<Pick<Booking, "bookingStatus" | "completedByWorkerId">>) {
     const oldBooking = bookings.find((booking) => booking.id === id);
-    const response = await fetch(`/api/admin/bookings/${id}`, {
+    const response = await adminFetch(`/api/admin/bookings/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -280,7 +298,7 @@ export function AdminDashboard({
   }
 
   async function deleteBooking(id: string) {
-    const response = await fetch(`/api/admin/bookings/${id}`, { method: "DELETE" });
+    const response = await adminFetch(`/api/admin/bookings/${id}`, { method: "DELETE" });
     if (!response.ok) return;
     const payload = (await response.json()) as { bookings: Booking[] };
     setBookings(payload.bookings);
@@ -306,7 +324,7 @@ export function AdminDashboard({
 
   async function saveCustomer() {
     if (!editingCustomer) return;
-    const response = await fetch(`/api/admin/customers/${encodeURIComponent(editingCustomerPhone)}`, {
+    const response = await adminFetch(`/api/admin/customers/${encodeURIComponent(editingCustomerPhone)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(editingCustomer)
@@ -318,14 +336,14 @@ export function AdminDashboard({
   }
 
   async function deleteCustomer(phoneNumber: string) {
-    const response = await fetch(`/api/admin/customers/${encodeURIComponent(phoneNumber)}`, { method: "DELETE" });
+    const response = await adminFetch(`/api/admin/customers/${encodeURIComponent(phoneNumber)}`, { method: "DELETE" });
     if (!response.ok) return;
     const payload = (await response.json()) as { bookings: Booking[] };
     setBookings(payload.bookings);
   }
 
   async function deleteAllBookings(reason: "bookings" | "customers", currentPassword?: string) {
-    const response = await fetch("/api/admin/bookings", {
+    const response = await adminFetch("/api/admin/bookings", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ currentPassword })
@@ -413,7 +431,7 @@ export function AdminDashboard({
 
   async function addPromoCode() {
     const generatedCode = nextPromoCode(promoForm.label, promos);
-    const response = await fetch("/api/admin/promos", {
+    const response = await adminFetch("/api/admin/promos", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -438,7 +456,7 @@ export function AdminDashboard({
       return;
     }
 
-    const response = await fetch(`/api/admin/promos/${encodeURIComponent(editingPromoCode)}`, {
+    const response = await adminFetch(`/api/admin/promos/${encodeURIComponent(editingPromoCode)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -473,14 +491,14 @@ export function AdminDashboard({
   }
 
   async function deletePromo(code: string) {
-    const response = await fetch(`/api/admin/promos/${encodeURIComponent(code)}`, { method: "DELETE" });
+    const response = await adminFetch(`/api/admin/promos/${encodeURIComponent(code)}`, { method: "DELETE" });
     if (!response.ok) return;
     const payload = (await response.json()) as { promos: PromoCode[] };
     setPromos(payload.promos);
   }
 
   async function saveSettings() {
-    const response = await fetch("/api/admin/settings", {
+    const response = await adminFetch("/api/admin/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(settings)
@@ -496,7 +514,7 @@ export function AdminDashboard({
       notify(language === "ar" ? "كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل ومتطابقة." : "New password must be at least 8 characters and match confirmation.");
       return;
     }
-    const response = await fetch("/api/admin/password", {
+    const response = await adminFetch("/api/admin/password", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(adminPasswordForm)
@@ -510,7 +528,7 @@ export function AdminDashboard({
   }
 
   async function addWorker() {
-    const response = await fetch("/api/admin/workers", {
+    const response = await adminFetch("/api/admin/workers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(workerForm)
@@ -523,7 +541,7 @@ export function AdminDashboard({
   }
 
   async function deleteWorker(id: string) {
-    const response = await fetch(`/api/admin/workers/${id}`, { method: "DELETE" });
+    const response = await adminFetch(`/api/admin/workers/${id}`, { method: "DELETE" });
     if (!response.ok) return;
     const payload = (await response.json()) as { workers: PublicWorker[] };
     setWorkers(payload.workers);
@@ -531,7 +549,7 @@ export function AdminDashboard({
   }
 
   async function updateWorker(id: string, updates: { name?: string; password?: string; areas?: string[] }) {
-    const response = await fetch(`/api/admin/workers/${id}`, {
+    const response = await adminFetch(`/api/admin/workers/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(updates)
@@ -619,6 +637,11 @@ export function AdminDashboard({
       refreshing = false;
       if (response && response.status === 401) {
         await logoutAfterIdle();
+        return;
+      }
+      if (response?.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { csrfToken?: string };
+        if (payload.csrfToken) setCsrfToken(payload.csrfToken);
       }
     }
 

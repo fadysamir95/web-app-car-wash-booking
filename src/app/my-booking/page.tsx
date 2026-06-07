@@ -19,6 +19,8 @@ export default function MyBookingPage() {
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [openBookingIds, setOpenBookingIds] = useState<Set<string>>(new Set());
+  const [loyaltyBalance, setLoyaltyBalance] = useState<number | null>(null);
+  const [showLoyaltyBalance, setShowLoyaltyBalance] = useState(false);
 
   useEffect(() => {
     const ref = new URLSearchParams(window.location.search).get("ref")?.trim();
@@ -33,12 +35,17 @@ export default function MyBookingPage() {
       }
       fetch(`/api/bookings?query=${encodeURIComponent(lookupRef)}`, { cache: "no-store" })
         .then((response) => response.json())
-        .then((payload: { bookings: Booking[] }) => {
+        .then((payload: { bookings: Booking[]; loyaltyBalance?: number }) => {
           if (ref) {
             const found = payload.bookings || [];
             setBookings(found);
+            setLoyaltyBalance(typeof payload.loyaltyBalance === "number" ? payload.loyaltyBalance : null);
+            setShowLoyaltyBalance(isPhoneLookup(lookupRef));
             setOpenBookingIds(new Set(found.map((booking) => booking.id)));
-          } else setDeviceBooking(payload.bookings?.[0] || null);
+          } else {
+            setDeviceBooking(payload.bookings?.[0] || null);
+            setLoyaltyBalance(typeof payload.loyaltyBalance === "number" ? payload.loyaltyBalance : null);
+          }
         })
         .finally(() => setLoading(false));
     });
@@ -51,9 +58,11 @@ export default function MyBookingPage() {
     setSearched(true);
     try {
       const response = await fetch(`/api/bookings?query=${encodeURIComponent(query.trim())}`, { cache: "no-store" });
-      const payload = (await response.json()) as { bookings: Booking[] };
+      const payload = (await response.json()) as { bookings: Booking[]; loyaltyBalance?: number };
       const nextBookings = payload.bookings || [];
       setBookings(nextBookings);
+      setLoyaltyBalance(typeof payload.loyaltyBalance === "number" ? payload.loyaltyBalance : null);
+      setShowLoyaltyBalance(isPhoneLookup(query));
       setOpenBookingIds(new Set(nextBookings.filter(shouldOpenBookingByDefault).map((booking) => booking.id)));
     } finally {
       setLoading(false);
@@ -86,7 +95,7 @@ export default function MyBookingPage() {
                 <p className="font-bold text-slate-600 dark:text-slate-200">
                   {deviceBooking.id} - {formatDisplayDate(deviceBooking.bookingDate, language)} - {deviceBooking.areaName || deviceBooking.area}
                 </p>
-                <button type="button" onClick={() => { setQuery(deviceBooking.id); setBookings([deviceBooking]); setOpenBookingIds(new Set([deviceBooking.id])); setSearched(true); }} className="inline-flex h-10 items-center justify-center rounded-[8px] bg-sky-600 px-4 text-xs font-black text-white">
+                <button type="button" onClick={() => { setQuery(deviceBooking.id); setBookings([deviceBooking]); setOpenBookingIds(new Set([deviceBooking.id])); setShowLoyaltyBalance(false); setSearched(true); }} className="inline-flex h-10 items-center justify-center rounded-[8px] bg-sky-600 px-4 text-xs font-black text-white">
                   {language === "ar" ? "عرض الحجز" : "View booking"}
                 </button>
               </div>
@@ -102,7 +111,12 @@ export default function MyBookingPage() {
         </section>
 
         <div className="mt-4 grid gap-4">
-          {searched && bookings.length > 0 ? <LoyaltyBalanceCard bookings={bookings} language={language} /> : null}
+          {searched && !showLoyaltyBalance && bookings.length > 0 ? (
+            <div className="rounded-[8px] border border-sky-200 bg-sky-50 p-3 text-sm font-bold text-sky-900 dark:border-sky-900 dark:bg-sky-950/35 dark:text-sky-100">
+              {language === "ar" ? "لمعرفة رصيد نقاطك ابحث برقم التليفون." : "To view your points balance, search by phone number."}
+            </div>
+          ) : null}
+          {searched && showLoyaltyBalance && bookings.length > 0 ? <LoyaltyBalanceCard bookings={bookings} loyaltyBalance={loyaltyBalance} language={language} /> : null}
           {bookings.map((booking) => (
             <BookingDetails
               key={booking.id}
@@ -126,8 +140,8 @@ export default function MyBookingPage() {
   );
 }
 
-function LoyaltyBalanceCard({ bookings, language }: { bookings: Booking[]; language: "en" | "ar" }) {
-  const balance = loyaltyBalanceForBookings(bookings);
+function LoyaltyBalanceCard({ bookings, loyaltyBalance, language }: { bookings: Booking[]; loyaltyBalance: number | null; language: "en" | "ar" }) {
+  const balance = loyaltyBalance ?? loyaltyBalanceForBookings(bookings);
   const completedCount = bookings.filter((booking) => booking.bookingStatus === "Completed").length;
   const nextRewardPoints = Math.max(100 - (balance % 100), 0);
 
@@ -149,6 +163,12 @@ function LoyaltyBalanceCard({ bookings, language }: { bookings: Booking[]; langu
       </p>
     </section>
   );
+}
+
+function isPhoneLookup(value: string) {
+  const normalized = value.trim().replace(/\D/g, "");
+  const localPhone = normalized.startsWith("2") && normalized.length === 12 ? normalized.slice(1) : normalized;
+  return /^01[0125]\d{8}$/.test(localPhone);
 }
 
 function BookingDetails({ booking, language, isOpen, onToggle }: { booking: Booking; language: "en" | "ar"; isOpen: boolean; onToggle: () => void }) {
@@ -196,7 +216,7 @@ function BookingDetails({ booking, language, isOpen, onToggle }: { booking: Book
             <p className="mt-1 text-sm font-bold text-slate-500">{formatDisplayDate(currentBooking.bookingDate, language)} - {currentBooking.areaName || currentBooking.area}</p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-black text-sky-800 dark:bg-sky-950 dark:text-sky-200">{displayBookingStatusLabel(currentBooking.bookingStatus, language)}</span>
+            <span className={bookingStatusBadgeClass(currentBooking.bookingStatus)}>{displayBookingStatusLabel(currentBooking.bookingStatus, language)}</span>
             <ChevronDown className="h-5 w-5 text-slate-400" />
           </div>
         </button>
@@ -212,7 +232,7 @@ function BookingDetails({ booking, language, isOpen, onToggle }: { booking: Book
           <h2 className="mt-1 text-2xl font-black text-slate-950 dark:text-white">{currentBooking.customerName}</h2>
           <p className="mt-1 text-sm font-bold text-slate-500">{currentBooking.phoneNumber}</p>
         </div>
-        <button type="button" onClick={onToggle} className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-xs font-black text-sky-800 dark:bg-sky-950 dark:text-sky-200">
+        <button type="button" onClick={onToggle} className={`${bookingStatusBadgeClass(currentBooking.bookingStatus)} gap-2`}>
           {displayBookingStatusLabel(currentBooking.bookingStatus, language)}
           <ChevronDown className="h-4 w-4 rotate-180" />
         </button>
@@ -476,6 +496,15 @@ function displayBookingStatusLabel(status: string, language: "en" | "ar") {
     Cancelled: "ملغي"
   };
   return labels[status] || status;
+}
+
+function bookingStatusBadgeClass(status: string) {
+  const base = "inline-flex items-center rounded-full px-3 py-1 text-xs font-black ring-1";
+  if (status === "Pending") return `${base} bg-amber-100 text-amber-800 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-900`;
+  if (status === "Confirmed") return `${base} bg-emerald-100 text-emerald-800 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:ring-emerald-900`;
+  if (status === "Completed") return `${base} bg-sky-100 text-sky-800 ring-sky-200 dark:bg-sky-950 dark:text-sky-200 dark:ring-sky-900`;
+  if (status === "Cancelled") return `${base} bg-rose-100 text-rose-800 ring-rose-200 dark:bg-rose-950 dark:text-rose-200 dark:ring-rose-900`;
+  return `${base} bg-slate-100 text-slate-700 ring-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700`;
 }
 
 function displayTimelineLabel(label: string, language: "en" | "ar") {

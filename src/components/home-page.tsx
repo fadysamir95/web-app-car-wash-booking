@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Clock, Loader2, MapPin, MessageCircle, Search, Sparkles } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clock, Loader2, MessageCircle, Search, ShieldCheck, Sparkles, Wrench } from "lucide-react";
 import { BookingForm } from "@/components/booking-form";
 import { AiSupportWidget } from "@/components/ai-support-widget";
 import { BrandLogo } from "@/components/brand-logo";
@@ -48,7 +48,7 @@ export function HomePage() {
       <section className="relative min-h-[86svh] overflow-hidden">
         <Image
           src="/images/hero-car-wash.png"
-          alt="Clean car at night ready for mobile car wash service"
+          alt="VAYAX mobile car care service"
           fill
           priority
           sizes="100vw"
@@ -68,9 +68,12 @@ export function HomePage() {
           <div className="flex min-h-[34svh] flex-col justify-center pb-2 pt-6 text-white lg:min-h-[70svh]">
             <div className="inline-flex w-fit items-center gap-2 rounded-full bg-white/12 px-3 py-2 text-sm font-bold ring-1 ring-white/20">
               <Sparkles className="h-4 w-4 text-sky-200" />
-              {t("heroBadge")}
+              VAYAX Care
             </div>
-            <h1 className="mt-5 max-w-2xl text-4xl font-black leading-[1.04] sm:text-5xl lg:text-6xl">{t("heroTitle")}</h1>
+            <h1 className="mt-5 max-w-2xl text-4xl font-black leading-[1.04] sm:text-5xl lg:text-6xl">
+              VAYAX
+              <span className="mt-2 block text-2xl font-black text-sky-200 sm:text-3xl lg:text-4xl">{t("heroTitle")}</span>
+            </h1>
             <p className="mt-5 max-w-xl text-base leading-7 text-slate-100 sm:text-lg">{t("heroCopy")}</p>
             <div className="mt-6 flex flex-wrap gap-3">
               <a href="#booking" className="inline-flex h-12 items-center gap-2 rounded-[8px] bg-sky-500 px-5 text-sm font-black text-white shadow-lg shadow-sky-950/25 transition hover:bg-sky-400">
@@ -82,9 +85,9 @@ export function HomePage() {
               </Link>
             </div>
             <div className="mt-8 grid gap-3 text-sm text-slate-100 sm:grid-cols-3">
-              <Fact icon={<Sparkles className="h-4 w-4" />} title={`${startingPrice} EGP`} />
+              <Fact icon={<ShieldCheck className="h-4 w-4" />} title={`${startingPrice} EGP`} />
               <Fact icon={<Clock className="h-4 w-4" />} title={language === "ar" ? settings.washWindowAr : settings.washWindow} />
-              <Fact icon={<MapPin className="h-4 w-4" />} title={`${activeAreas.length} ${t("supportedAreas")}`} />
+              <Fact icon={<Wrench className="h-4 w-4" />} title={`${activeAreas.length} ${t("supportedAreas")}`} />
             </div>
           </div>
           <div className="w-full pb-10 lg:flex lg:items-end lg:pb-4">
@@ -113,6 +116,25 @@ export function HomePage() {
           </div>
         </div>
       </section>
+      <section className="bg-slate-50 px-4 py-10 dark:bg-slate-900 sm:px-6">
+        <div className="mx-auto max-w-6xl">
+          <div className="max-w-2xl">
+            <p className="text-sm font-black uppercase text-sky-700">VAYAX FAQ</p>
+            <h2 className="mt-2 text-2xl font-black text-slate-950 dark:text-white">{language === "ar" ? "أسئلة شائعة" : "Frequently asked questions"}</h2>
+          </div>
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
+            {faqItems(language).map((item) => (
+              <details key={item.question} className="group rounded-[8px] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-black text-slate-950 dark:text-white">
+                  {item.question}
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-sky-600 transition group-open:rotate-45" />
+                </summary>
+                <p className="mt-3 text-sm font-bold leading-6 text-slate-600 dark:text-slate-300">{item.answer}</p>
+              </details>
+            ))}
+          </div>
+        </div>
+      </section>
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur lg:hidden dark:border-slate-800 dark:bg-slate-950/95">
         <a href="#booking" className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[8px] bg-sky-600 text-sm font-black text-white">
           {t("cta")}
@@ -122,6 +144,24 @@ export function HomePage() {
       <AiSupportWidget />
     </main>
   );
+}
+
+function faqItems(language: "en" | "ar") {
+  if (language === "ar") {
+    return [
+      { question: "أين تعمل VAYAX حاليًا؟", answer: "الخدمة متاحة حاليًا في 6 أكتوبر الجديدة داخل المناطق المتاحة في نموذج الحجز." },
+      { question: "ما موعد غسيل السيارة؟", answer: "يتم تنفيذ الغسيل في نافذة التشغيل المحددة من 12:00 صباحًا إلى 5:00 صباحًا." },
+      { question: "كيف أؤكد الحجز؟", answer: "بعد إرسال الحجز تظهر تعليمات الدفع. يتم تأكيد الحجز بعد استلام الدفع والتحقق منه." },
+      { question: "هل أستطيع تتبع حجزي؟", answer: "نعم، من صفحة حجوزاتي يمكنك البحث برقم الهاتف أو رقم الحجز ومعرفة الحالة." }
+    ];
+  }
+
+  return [
+    { question: "Where does VAYAX operate now?", answer: "VAYAX currently operates in New October City within the available areas shown in the booking form." },
+    { question: "When will my car be washed?", answer: "The wash is completed during the configured operating window from 12:00 AM to 5:00 AM." },
+    { question: "How do I confirm my booking?", answer: "After submitting your request, payment instructions appear. The booking is confirmed after payment is received and verified." },
+    { question: "Can I track my booking?", answer: "Yes. Open My Bookings and search by phone number or booking reference to view the latest status." }
+  ];
 }
 
 function MyBookings() {

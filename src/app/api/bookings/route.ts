@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { activePromoCodes, createBooking, readBookings, readPromoCodes, readSettings } from "@/lib/store";
+import { activePromoCodes, createBooking, customerLoyaltyBalance, readBookings, readPromoCodes, readSettings } from "@/lib/store";
 import { normalizePhone, validateBookingInput } from "@/lib/validation";
 import { consumeOtpToken, verifyOtpToken } from "@/lib/otp";
 import { readWorkers } from "@/lib/workers";
@@ -18,6 +18,8 @@ export async function GET(request: Request) {
   const bookings = await readBookings();
   const matches = bookings
     .filter((booking) => booking.id.toUpperCase() === normalizedReference || booking.phoneNumber === normalizedPhone);
+  const balancePhone = normalizedPhone || matches[0]?.phoneNumber || "";
+  const loyaltyBalance = balancePhone ? customerLoyaltyBalance(bookings, balancePhone) : 0;
   const workers = await readWorkers();
   const enrichedMatches = matches.map((booking) => {
     const worker = booking.completedByWorkerId ? workers.find((item) => item.id === booking.completedByWorkerId) : null;
@@ -27,7 +29,7 @@ export async function GET(request: Request) {
     };
   });
 
-  return NextResponse.json({ bookings: enrichedMatches });
+  return NextResponse.json({ bookings: enrichedMatches, loyaltyBalance });
 }
 
 export async function POST(request: Request) {
@@ -44,6 +46,12 @@ export async function POST(request: Request) {
 
   if (!result.ok) {
     return NextResponse.json({ errors: result.errors }, { status: 400 });
+  }
+
+  const phoneRate = checkRateLimit(`booking-phone:${result.data.phoneNumber}`, 5, 30 * 60 * 1000);
+  const pairRate = checkRateLimit(`booking-pair:${ip}:${result.data.phoneNumber}`, 3, 15 * 60 * 1000);
+  if (!phoneRate.ok || !pairRate.ok) {
+    return NextResponse.json({ errors: { form: "Too many bookings from this phone number. Please try again later." } }, { status: 429 });
   }
 
   const otpToken = typeof body === "object" && body !== null && "otpToken" in body ? String((body as { otpToken?: unknown }).otpToken || "") : "";

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isAdminAuthenticated } from "@/lib/admin";
+import { isAdminAuthenticated, verifyAdminCsrf } from "@/lib/admin";
 import { createWorker, publicWorker, readWorkers } from "@/lib/workers";
 
 export async function GET() {
@@ -14,6 +14,9 @@ export async function GET() {
 export async function POST(request: Request) {
   if (!(await isAdminAuthenticated())) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+  if (!(await verifyAdminCsrf(request))) {
+    return NextResponse.json({ error: "Invalid CSRF token." }, { status: 403 });
   }
 
   const body = (await request.json().catch(() => null)) as { name?: string; password?: string; areas?: string[] } | null;
