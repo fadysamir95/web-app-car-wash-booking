@@ -96,6 +96,16 @@ export async function deletePromoCode(code: string) {
   return next;
 }
 
+export async function updatePromoCode(code: string, updates: Omit<PromoCode, "code">) {
+  const promos = await readPromoCodes();
+  const promoIndex = promos.findIndex((promo) => promo.code === code.trim().toLowerCase());
+  if (promoIndex === -1) return null;
+
+  const next = promos.map((promo, index) => (index === promoIndex ? { ...promo, ...updates, code: promo.code } : promo));
+  await writePromoCodes(next);
+  return next;
+}
+
 async function expirePendingBookings(bookings: Booking[]) {
   const now = Date.now();
   let changed = false;

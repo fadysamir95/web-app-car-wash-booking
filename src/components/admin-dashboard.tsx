@@ -71,6 +71,7 @@ export function AdminDashboard({
   const [analyticsNow, setAnalyticsNow] = useState("");
   const [promos, setPromos] = useState<PromoCode[]>(PROMO_CODES.map((promo) => ({ ...promo, discountType: "amount", active: true })));
   const [promoForm, setPromoForm] = useState({ code: "", label: "", discountType: "amount", discountValue: "25", expiresAt: "" });
+  const [editingPromoCode, setEditingPromoCode] = useState("");
   const [settings, setSettings] = useState<ServiceSettings>(initialSettings);
   const [workers, setWorkers] = useState<PublicWorker[]>(initialWorkers);
   const [workerForm, setWorkerForm] = useState({ name: "", password: "", areas: initialSettings.areas.filter((area) => area.active).map((area) => area.id) });
@@ -408,6 +409,46 @@ export function AdminDashboard({
     if (!response.ok) return;
     const payload = (await response.json()) as { promos: PromoCode[] };
     setPromos(payload.promos);
+    resetPromoForm();
+  }
+
+  async function savePromoCode() {
+    if (!editingPromoCode) {
+      await addPromoCode();
+      return;
+    }
+
+    const response = await fetch(`/api/admin/promos/${encodeURIComponent(editingPromoCode)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        label: promoForm.label || editingPromoCode,
+        discountType: promoForm.discountType,
+        discountEgp: promoForm.discountType === "amount" ? Number(promoForm.discountValue || 0) : 0,
+        discountPercent: promoForm.discountType === "percentage" ? Number(promoForm.discountValue || 0) : undefined,
+        expiresAt: promoForm.expiresAt ? `${promoForm.expiresAt}T23:59:59.999Z` : undefined,
+        active: true
+      })
+    });
+    if (!response.ok) return;
+    const payload = (await response.json()) as { promos: PromoCode[] };
+    setPromos(payload.promos);
+    resetPromoForm();
+  }
+
+  function editPromo(promo: PromoCode) {
+    setEditingPromoCode(promo.code);
+    setPromoForm({
+      code: promo.code,
+      label: promo.label,
+      discountType: promo.discountType || "amount",
+      discountValue: String(promo.discountType === "percentage" ? promo.discountPercent || 0 : promo.discountEgp || 0),
+      expiresAt: promo.expiresAt ? promo.expiresAt.slice(0, 10) : ""
+    });
+  }
+
+  function resetPromoForm() {
+    setEditingPromoCode("");
     setPromoForm({ code: "", label: "", discountType: "amount", discountValue: "25", expiresAt: "" });
   }
 
@@ -971,7 +1012,10 @@ export function AdminDashboard({
         {tab === "promoCodes" ? (
           <section className="mt-4 grid gap-4 lg:grid-cols-[360px_1fr]">
             <div className="rounded-[8px] bg-white p-4 shadow-sm dark:bg-slate-900">
-              <h2 className="text-lg font-black text-slate-950 dark:text-white">{t("addPromoCode")}</h2>
+              <h2 className="text-lg font-black text-slate-950 dark:text-white">
+                {editingPromoCode ? (language === "ar" ? "تعديل كود الخصم" : "Edit Promo Code") : t("addPromoCode")}
+              </h2>
+              {editingPromoCode ? <p className="mt-1 text-xs font-black text-sky-700">{editingPromoCode}</p> : null}
               <div className="mt-4 grid gap-3">
                 <label>
                   <span className="label">{t("promoLabel")}</span>
@@ -992,9 +1036,14 @@ export function AdminDashboard({
                   <span className="label">{t("promoExpiry")}</span>
                   <input className="field" type="date" value={promoForm.expiresAt} onChange={(event) => setPromoForm({ ...promoForm, expiresAt: event.target.value })} />
                 </label>
-                <button type="button" onClick={addPromoCode} className="inline-flex h-11 items-center justify-center rounded-[8px] bg-sky-600 px-4 text-sm font-black text-white">
+                <button type="button" onClick={savePromoCode} className="inline-flex h-11 items-center justify-center rounded-[8px] bg-sky-600 px-4 text-sm font-black text-white">
                   {t("save")}
                 </button>
+                {editingPromoCode ? (
+                  <button type="button" onClick={resetPromoForm} className="inline-flex h-11 items-center justify-center rounded-[8px] bg-slate-200 px-4 text-sm font-black text-slate-950 dark:bg-slate-800 dark:text-white">
+                    {language === "ar" ? "إلغاء التعديل" : "Cancel edit"}
+                  </button>
+                ) : null}
               </div>
             </div>
             <div className="rounded-[8px] bg-white p-4 shadow-sm dark:bg-slate-900">
@@ -1009,10 +1058,15 @@ export function AdminDashboard({
                         {language === "ar" ? "ينتهي في" : "Expires"}: {promo.expiresAt ? formatDisplayDate(promo.expiresAt.slice(0, 10), language) : language === "ar" ? "بدون تاريخ انتهاء" : "No expiry date"}
                       </p>
                     </div>
-                    <button type="button" onClick={() => deletePromo(promo.code)} className="inline-flex h-9 items-center gap-1 rounded-[8px] bg-rose-600 px-3 text-xs font-black text-white">
-                      <Trash2 className="h-3.5 w-3.5" />
-                      {t("delete")}
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={() => editPromo(promo)} className="inline-flex h-9 items-center rounded-[8px] bg-sky-600 px-3 text-xs font-black text-white">
+                        {language === "ar" ? "تعديل" : "Edit"}
+                      </button>
+                      <button type="button" onClick={() => deletePromo(promo.code)} className="inline-flex h-9 items-center gap-1 rounded-[8px] bg-rose-600 px-3 text-xs font-black text-white">
+                        <Trash2 className="h-3.5 w-3.5" />
+                        {t("delete")}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
