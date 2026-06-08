@@ -309,7 +309,7 @@ export async function updateBookingStatus(
   if (!booking) return null;
 
   Object.assign(booking, normalizeStatusUpdates(updates));
-  if (updates.bookingStatus === "Completed" && updates.completedByWorkerId) {
+  if ("completedByWorkerId" in updates) {
     booking.completedByWorkerId = updates.completedByWorkerId;
     booking.completedByWorkerName = updates.completedByWorkerName;
   }

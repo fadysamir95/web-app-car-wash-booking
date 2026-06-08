@@ -1,5 +1,28 @@
 [
   {
+    "id": "worker_b46a7a",
+    "name": "Medhat",
+    "passwordHash": "e7b71c0b7f36f7eff8358fa629ac5cb8:33f98ca6721a9e4407e0f266f2e9ec79427980edc5f607ad4c3ddef02cdd5ee83a6a99a7e2174dc7528f2883e045898dfeca0834d68610dba447757033f601b5",
+    "passwordPreview": "medhat",
+    "areas": [
+      "degla-palms",
+      "800-feddan"
+    ],
+    "completedWashes": 0,
+    "createdAt": "2026-06-08T07:57:32.523Z"
+  },
+  {
+    "id": "worker_a4e56f",
+    "name": "على",
+    "passwordHash": "ca192d0cc6db62412297da61787afb56:bdcd6c2a6c85c09547e85dc7d530eab11dd28baad8bd7e6612371d6c8b5a6469e30aa824507e79a898d7b6612d303db56549d90d1d6ed2b9fd357ad326a7d1ab",
+    "passwordPreview": "aliali",
+    "areas": [
+      "degla-palms"
+    ],
+    "completedWashes": 0,
+    "createdAt": "2026-06-08T07:57:03.471Z"
+  },
+  {
     "id": "worker_f6f033",
     "name": "رامز",
     "passwordHash": "22baee9cd1ac6540d783331145fc084e:539dc00d2e5055bce9e58ca8c82595ce5ee1d9d637dceae25f7245f77dd9e54aebc1d30a7180e385926a11f5d09c38cd717d06370e2d865f65b097e91ebae1f0",

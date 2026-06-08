@@ -37,6 +37,20 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   let worker: PublicWorker | null = null;
+  if (body && "workerId" in body && updates.bookingStatus !== "Completed") {
+    if (body.workerId) {
+      const existingWorker = await getWorkerById(body.workerId);
+      if (!existingWorker) {
+        return NextResponse.json({ error: "Worker not found." }, { status: 400 });
+      }
+      updates.completedByWorkerId = body.workerId;
+      updates.completedByWorkerName = existingWorker.name;
+    } else {
+      updates.completedByWorkerId = undefined;
+      updates.completedByWorkerName = undefined;
+    }
+  }
+
   if (updates.bookingStatus === "Completed") {
     if (!body?.workerId) {
       return NextResponse.json({ error: "Worker is required for completed washes." }, { status: 400 });

@@ -76,6 +76,7 @@ export function AdminDashboard({
   const [settings, setSettings] = useState<ServiceSettings>(initialSettings);
   const [workers, setWorkers] = useState<PublicWorker[]>(initialWorkers);
   const [workerForm, setWorkerForm] = useState({ name: "", password: "", areas: initialSettings.areas.filter((area) => area.active).map((area) => area.id) });
+  const [workerFormError, setWorkerFormError] = useState("");
   const [adminPasswordForm, setAdminPasswordForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
   const [bookingsPage, setBookingsPage] = useState(1);
   const [customersPage, setCustomersPage] = useState(1);
@@ -257,6 +258,20 @@ export function AdminDashboard({
     }
   }
 
+  async function reassignBookingWorker(booking: Booking, workerId: string) {
+    const currentWorkerId = assignedWorkerIdForBooking(booking, workers);
+    if (currentWorkerId === workerId) return;
+
+    const oldWorkerName = assignedWorkerNameForBooking(booking, workers, language);
+    await updateBooking(booking.id, { completedByWorkerId: workerId });
+    const nextWorkerName = workerId ? workers.find((worker) => worker.id === workerId)?.name || workerId : language === "ar" ? "غير محدد" : "Unassigned";
+    notify(
+      language === "ar"
+        ? `تم تغيير عامل الحجز ${booking.id} من ${oldWorkerName} إلى ${nextWorkerName}.`
+        : `Booking ${booking.id} worker changed from ${oldWorkerName} to ${nextWorkerName}.`
+    );
+  }
+
   function requestStatusChange(bookingId: string, nextStatus: Booking["bookingStatus"]) {
     const booking = bookings.find((item) => item.id === bookingId);
     if (!booking) return;
@@ -265,7 +280,7 @@ export function AdminDashboard({
     if (from === to) return;
 
     if (isSensitiveStatusChange(to)) {
-      const defaultWorkerId = to === "Completed" ? workers.find((worker) => worker.areas.includes(booking.area))?.id || workers[0]?.id || "" : "";
+      const defaultWorkerId = to === "Completed" ? assignedWorkerIdForBooking(booking, workers) || workers[0]?.id || "" : "";
       setPendingStatusWorkerId(defaultWorkerId);
       setPendingStatusChange({
         bookingId: booking.id,
@@ -528,15 +543,40 @@ export function AdminDashboard({
   }
 
   async function addWorker() {
+    const name = workerForm.name.trim();
+    const password = workerForm.password.trim();
+    const showWorkerError = (message: string) => {
+      setWorkerFormError(message);
+      notify(message);
+    };
+    if (!name) {
+      showWorkerError(language === "ar" ? "اكتب اسم العامل أولًا." : "Enter the worker name first.");
+      return;
+    }
+    if (password.length < 6) {
+      showWorkerError(language === "ar" ? "كلمة مرور العامل يجب أن تكون 6 أحرف أو أرقام على الأقل." : "Worker password must be at least 6 characters.");
+      return;
+    }
+    if (workerForm.areas.length === 0) {
+      showWorkerError(language === "ar" ? "اختر منطقة واحدة على الأقل للعامل." : "Select at least one area for the worker.");
+      return;
+    }
+
+    setWorkerFormError("");
     const response = await adminFetch("/api/admin/workers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(workerForm)
+      body: JSON.stringify({ ...workerForm, name, password })
     });
-    if (!response.ok) return;
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      showWorkerError(payload.error || (language === "ar" ? "لم يتم إضافة العامل. حاول مرة أخرى." : "Worker was not added. Please try again."));
+      return;
+    }
     const payload = (await response.json()) as { worker: PublicWorker };
     setWorkers((current) => [payload.worker, ...current]);
     setWorkerForm({ name: "", password: "", areas: settings.areas.filter((area) => area.active).map((area) => area.id) });
+    setWorkerFormError("");
     notify(language === "ar" ? "تم إضافة العامل." : "Worker added.");
   }
 
@@ -893,6 +933,7 @@ export function AdminDashboard({
             onResetDate={() => setOperationDateFilter("")}
             onAreaFilterChange={setOperationAreaFilter}
             onMarkWashed={(bookingId) => requestStatusChange(bookingId, "Completed")}
+            onReassignWorker={reassignBookingWorker}
             onOpenBooking={setSelectedBookingId}
           />
         ) : null}
@@ -960,6 +1001,11 @@ export function AdminDashboard({
                         <p>
                           <strong>{language === "ar" ? "تم الغسيل بواسطة" : "Washed by"}:</strong> {workerNameForBooking(booking, workers)}
                         </p>
+                      ) : null}
+                      {normalizedBookingStatus(booking.bookingStatus) === "Confirmed" ? (
+                        <div className="mt-2" onClick={(event) => event.stopPropagation()}>
+                          <WorkerAssignSelect booking={booking} workers={workers} language={language} onChange={(workerId) => reassignBookingWorker(booking, workerId)} />
+                        </div>
                       ) : null}
                     </div>
                   </div>
@@ -1174,6 +1220,8 @@ export function AdminDashboard({
             workers={workers}
             workerForm={workerForm}
             setWorkerForm={setWorkerForm}
+            workerFormError={workerFormError}
+            onWorkerFormChange={() => setWorkerFormError("")}
             settings={settings}
             language={language}
             onAdd={addWorker}
@@ -1336,6 +1384,7 @@ function TodayOperationsPanel({
   onResetDate,
   onAreaFilterChange,
   onMarkWashed,
+  onReassignWorker,
   onOpenBooking
 }: {
   bookings: Booking[];
@@ -1351,6 +1400,7 @@ function TodayOperationsPanel({
   onResetDate: () => void;
   onAreaFilterChange: (value: string) => void;
   onMarkWashed: (bookingId: string) => void;
+  onReassignWorker: (booking: Booking, workerId: string) => void;
   onOpenBooking: (id: string) => void;
 }) {
   const [reportVisible, setReportVisible] = useState(false);
@@ -1536,7 +1586,7 @@ function TodayOperationsPanel({
 
       <div className="grid gap-3">
         {sortedBookings.map((booking) => {
-          const worker = workers.find((item) => item.areas.includes(booking.area));
+          const worker = assignedWorkerForBooking(booking, workers);
           const status = normalizedBookingStatus(booking.bookingStatus);
           return (
             <article
@@ -1576,6 +1626,9 @@ function TodayOperationsPanel({
                   <p>
                     <strong>{label.worker}: </strong>{worker?.name || "-"}
                   </p>
+                  <div className="mt-2" onClick={(event) => event.stopPropagation()}>
+                    <WorkerAssignSelect booking={booking} workers={workers} language={language} onChange={(workerId) => onReassignWorker(booking, workerId)} />
+                  </div>
                   {worker ? (
                     <p>
                       <strong>ETA: </strong>{workerEtaLabel(worker, booking.carLocation, language)}
@@ -1781,6 +1834,8 @@ function WorkersPanel({
   workers,
   workerForm,
   setWorkerForm,
+  workerFormError,
+  onWorkerFormChange,
   settings,
   language,
   onAdd,
@@ -1790,14 +1845,19 @@ function WorkersPanel({
   workers: PublicWorker[];
   workerForm: { name: string; password: string; areas: string[] };
   setWorkerForm: (form: { name: string; password: string; areas: string[] }) => void;
+  workerFormError: string;
+  onWorkerFormChange: () => void;
   settings: ServiceSettings;
   language: "en" | "ar";
   onAdd: () => void;
   onUpdate: (id: string, updates: { name?: string; password?: string; areas?: string[] }) => void;
   onDelete: (id: string) => void;
 }) {
+  void workerFormError;
+
   function toggleArea(areaId: string) {
     const hasArea = workerForm.areas.includes(areaId);
+    onWorkerFormChange();
     setWorkerForm({ ...workerForm, areas: hasArea ? workerForm.areas.filter((item) => item !== areaId) : [...workerForm.areas, areaId] });
   }
 
@@ -2322,6 +2382,44 @@ function Empty({ text }: { text: string }) {
   return <div className="rounded-[8px] bg-white p-8 text-center text-sm font-bold text-slate-500 dark:bg-slate-900">{text}</div>;
 }
 
+function WorkerAssignSelect({
+  booking,
+  workers,
+  language,
+  onChange
+}: {
+  booking: Booking;
+  workers: PublicWorker[];
+  language: "en" | "ar";
+  onChange: (workerId: string) => void;
+}) {
+  const selectedWorkerId = assignedWorkerIdForBooking(booking, workers);
+  const sortedWorkers = [...workers].sort((a, b) => {
+    const aAreaMatch = a.areas.includes(booking.area) ? 1 : 0;
+    const bAreaMatch = b.areas.includes(booking.area) ? 1 : 0;
+    return bAreaMatch - aAreaMatch || a.name.localeCompare(b.name);
+  });
+
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs font-black text-slate-500 dark:text-slate-300">
+        {language === "ar" ? "العامل المسؤول" : "Assigned worker"}
+      </span>
+      <select className="field min-h-12 py-2 text-sm leading-7" value={selectedWorkerId} onChange={(event) => onChange(event.target.value)}>
+        {sortedWorkers.length === 0 ? (
+          <option value="">{language === "ar" ? "لا يوجد عمال" : "No workers"}</option>
+        ) : null}
+        {sortedWorkers.map((worker) => (
+          <option key={worker.id} value={worker.id}>
+            {worker.name}
+            {worker.areas.includes(booking.area) ? (language === "ar" ? " - عامل المنطقة" : " - area worker") : ""}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function primaryBookingAction(booking: Booking): { label: TranslationKey; next: Booking["bookingStatus"] } | null {
   const status = normalizedBookingStatus(booking.bookingStatus);
   if (status === "Pending") return { label: "paidReceived", next: "Confirmed" };
@@ -2352,6 +2450,23 @@ function workerNameForBooking(booking: Booking, workers: PublicWorker[]) {
   if (booking.completedByWorkerName) return booking.completedByWorkerName;
   if (booking.completedByWorkerId) return workers.find((worker) => worker.id === booking.completedByWorkerId)?.name || booking.completedByWorkerId;
   return "-";
+}
+
+function defaultWorkerForArea(area: string, workers: PublicWorker[]) {
+  return workers.find((worker) => worker.areas.includes(area)) || null;
+}
+
+function assignedWorkerForBooking(booking: Booking, workers: PublicWorker[]) {
+  if (booking.completedByWorkerId) return workers.find((worker) => worker.id === booking.completedByWorkerId) || null;
+  return defaultWorkerForArea(booking.area, workers);
+}
+
+function assignedWorkerIdForBooking(booking: Booking, workers: PublicWorker[]) {
+  return booking.completedByWorkerId || defaultWorkerForArea(booking.area, workers)?.id || "";
+}
+
+function assignedWorkerNameForBooking(booking: Booking, workers: PublicWorker[], language: "en" | "ar") {
+  return assignedWorkerForBooking(booking, workers)?.name || (language === "ar" ? "غير محدد" : "Unassigned");
 }
 
 function bookingFinalPrice(booking: Booking) {
