@@ -193,7 +193,7 @@ export function BookingForm() {
   const previousCars = uniquePreviousCars(returningBookings);
   const loyaltyBalance = returningBookings.reduce((total, booking) => {
     const earned = booking.bookingStatus === "Completed" ? booking.loyaltyPointsEarned && booking.loyaltyPointsEarned > 0 ? booking.loyaltyPointsEarned : 10 : 0;
-    const redeemed = booking.loyaltyRewardRedeemed ? 100 : 0;
+    const redeemed = booking.loyaltyRewardRedeemed && booking.bookingStatus !== "Cancelled" ? 100 : 0;
     return total + earned - redeemed;
   }, 0);
   const canRedeemLoyalty = loyaltyBalance >= 100;
@@ -1047,7 +1047,7 @@ function ConfirmRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function translateServerErrors(errors: Record<string, string>, t: (key: "requiredOtp" | "duplicatePlateBooking" | "tooManyBookingsFromPhone" | "tooManySavedCars") => string) {
+function translateServerErrors(errors: Record<string, string>, t: (key: "requiredOtp" | "duplicatePlateBooking" | "tooManyBookingsFromPhone" | "maxBookingsForPhoneDate" | "tooManySavedCars") => string) {
   return Object.fromEntries(
     Object.entries(errors).map(([key, value]) => [
       key,
@@ -1057,6 +1057,8 @@ function translateServerErrors(errors: Record<string, string>, t: (key: "require
           ? t("duplicatePlateBooking")
           : value === "Too many bookings from this phone number. Please try again later."
             ? t("tooManyBookingsFromPhone")
+            : value === "This phone number already has the maximum bookings for this date."
+              ? t("maxBookingsForPhoneDate")
             : value === "This phone number already has 3 saved cars. Remove an old saved car before adding another one."
               ? t("tooManySavedCars")
               : value

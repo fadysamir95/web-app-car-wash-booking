@@ -327,7 +327,7 @@ function shouldOpenBookingByDefault(booking: Booking) {
 function loyaltyBalanceForBookings(bookings: Booking[]) {
   return bookings.reduce((total, booking) => {
     const earned = booking.bookingStatus === "Completed" ? booking.loyaltyPointsEarned && booking.loyaltyPointsEarned > 0 ? booking.loyaltyPointsEarned : 10 : 0;
-    const redeemed = booking.loyaltyRewardRedeemed ? 100 : 0;
+    const redeemed = booking.loyaltyRewardRedeemed && booking.bookingStatus !== "Cancelled" ? 100 : 0;
     return total + earned - redeemed;
   }, 0);
 }
@@ -482,7 +482,10 @@ function timelineNote(note: string, language: "en" | "ar") {
   if (language === "en") return note;
   const notes: Record<string, string> = {
     "Awaiting payment confirmation.": "في انتظار تأكيد الدفع.",
-    "Free wash promo applied.": "تم تطبيق بروموكود غسلة مجانية."
+    "Free wash promo applied.": "تم تطبيق بروموكود غسلة مجانية.",
+    "Promo code applied.": "تم تطبيق كود الخصم.",
+    "Loyalty reward redeemed.": "تم استخدام مكافأة النقاط.",
+    "Promo code applied. Loyalty reward redeemed.": "تم تطبيق كود الخصم واستخدام مكافأة النقاط."
   };
   return notes[note] || note;
 }
@@ -542,6 +545,7 @@ function displayTimelineNote(note: string, language: "en" | "ar", booking?: Book
     "Free wash promo applied.": "تم تطبيق بروموكود غسلة مجانية.",
     "Promo code applied.": "تم تطبيق كود الخصم.",
     "Loyalty reward redeemed.": "تم استخدام مكافأة النقاط.",
+    "Promo code applied. Loyalty reward redeemed.": "تم تطبيق كود الخصم واستخدام مكافأة النقاط.",
     "Payment was not received within 3 hours.": "لم يتم استلام الدفع خلال 3 ساعات."
   };
   return notes[note] || timelineNote(note, language);

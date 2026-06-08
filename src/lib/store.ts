@@ -258,7 +258,7 @@ export function customerLoyaltyBalance(bookings: Booking[], phoneNumber: string)
     .filter((booking) => booking.phoneNumber === phoneNumber)
     .reduce((total, booking) => {
       const earned = booking.bookingStatus === "Completed" ? loyaltyPointsEarnedForBooking(booking) : 0;
-      const redeemed = booking.loyaltyRewardRedeemed ? pointsForFreeWash : 0;
+      const redeemed = booking.loyaltyRewardRedeemed && booking.bookingStatus !== "Cancelled" ? pointsForFreeWash : 0;
       return total + earned - redeemed;
     }, 0);
 }

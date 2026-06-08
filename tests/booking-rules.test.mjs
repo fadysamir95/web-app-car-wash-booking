@@ -44,6 +44,16 @@ function redeemFreeWash(customer) {
   return true;
 }
 
+function loyaltyBalanceForBookings(bookings, phone) {
+  return bookings
+    .filter((booking) => booking.phoneNumber === phone)
+    .reduce((total, booking) => {
+      const earned = booking.bookingStatus === "Completed" ? booking.loyaltyPointsEarned || 10 : 0;
+      const redeemed = booking.loyaltyRewardRedeemed && booking.bookingStatus !== "Cancelled" ? 100 : 0;
+      return total + earned - redeemed;
+    }, 0);
+}
+
 test("booking capacity blocks the 21st booking for the same date", () => {
   const bookings = Array.from({ length: DAILY_CAPACITY }, (_, index) => ({
     bookingDate: "2026-06-08",
@@ -90,4 +100,25 @@ test("completed bookings award loyalty points and support free wash redemption",
   assert.equal(redeemFreeWash(customer), true);
   assert.equal(customer.loyaltyPoints, 0);
   assert.equal(redeemFreeWash(customer), false);
+});
+
+test("cancelled loyalty reward bookings refund redeemed points", () => {
+  const phoneNumber = "01208878827";
+  const completedWashes = Array.from({ length: 10 }, (_, index) => ({
+    phoneNumber,
+    bookingStatus: "Completed",
+    loyaltyPointsEarned: 10,
+    loyaltyRewardRedeemed: false,
+    id: `CW-${index}`
+  }));
+  const redeemedButCancelled = {
+    phoneNumber,
+    bookingStatus: "Cancelled",
+    loyaltyPointsEarned: 0,
+    loyaltyRewardRedeemed: true,
+    id: "CW-FREE"
+  };
+
+  assert.equal(loyaltyBalanceForBookings([...completedWashes, redeemedButCancelled], phoneNumber), 100);
+  assert.equal(loyaltyBalanceForBookings([...completedWashes, { ...redeemedButCancelled, bookingStatus: "Confirmed" }], phoneNumber), 0);
 });

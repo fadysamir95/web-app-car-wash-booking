@@ -2516,6 +2516,7 @@ function adminTimelineNote(note: string, language: "en" | "ar", booking?: Bookin
     "Free wash promo applied.": "تم تطبيق بروموكود غسلة مجانية.",
     "Promo code applied.": "تم تطبيق كود الخصم.",
     "Loyalty reward redeemed.": "تم استخدام مكافأة النقاط.",
+    "Promo code applied. Loyalty reward redeemed.": "تم تطبيق كود الخصم واستخدام مكافأة النقاط.",
     "Payment was not received within 3 hours.": "لم يتم استلام الدفع خلال 3 ساعات."
   };
   return notes[note] || note;
